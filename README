@@ -34,4 +34,4 @@ Run:
 
 Test:
 
-  python tools/get.py http://www.google.com/
+  python tools/get.py http://fanout.io/
