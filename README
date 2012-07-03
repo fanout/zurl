@@ -13,20 +13,25 @@ Features:
   - Packet format uses TNetStrings
   - Set access policies (e.g. block requests to 10.*)
 
+Requirements:
+
+  Qt >= 4.7
+  libzmq >= 2.0
+
 If accessing from Git, be sure to pull submodules:
 
   git submodule init
   git submodule update
 
-Building:
+Build:
 
   ./configure
   make
 
-Running:
+Run:
 
-  ./yurl -c yurl.conf.example
+  ./yurl --config=yurl.conf.example
 
-Testing:
+Test:
 
-  python tools/get.py http://google.com/
+  python tools/get.py http://www.google.com/

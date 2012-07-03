@@ -1,0 +1,6 @@
+[General]
+in_spec=tcp://*:5550
+out_spec=tcp://*:5551
+in_req_spec=tcp://*:5552
+defpolicy=allow
+deny=10.*,192.168.*,*.local

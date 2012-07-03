@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QPair>
 
+class QHostAddress;
 class QUrl;
 class JDnsShared;
 
@@ -39,6 +40,7 @@ public:
 	QByteArray readResponseBody(); // takes from the buffer
 
 signals:
+	void nextAddress(const QHostAddress &addr);
 	void readyRead();
 	void error();
 

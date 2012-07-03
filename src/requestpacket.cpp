@@ -33,7 +33,7 @@ bool RequestPacket::fromVariant(const QVariant &in)
 			return false;
 
 		headers.clear();
-		foreach(QVariant i, obj["headers"].toList())
+		foreach(const QVariant &i, obj["headers"].toList())
 		{
 			QVariantList list = i.toList();
 			if(list.count() != 2)

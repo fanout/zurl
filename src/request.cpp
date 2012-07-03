@@ -81,9 +81,13 @@ public:
 			return;
 		}
 
+		QHostAddress addr = addrs.takeFirst();
+
+		emit q->nextAddress(addr);
+
 		QNetworkRequest request;
 		QUrl tmpUrl = url;
-		tmpUrl.setHost(addrs.takeFirst().toString());
+		tmpUrl.setHost(addr.toString());
 		request.setUrl(tmpUrl);
 		request.setRawHeader("Host", host.toUtf8());
 
@@ -122,7 +126,7 @@ private slots:
 		if(dreq->success())
 		{
 			QList<QJDns::Record> results = dreq->results();
-			foreach(QJDns::Record r, results)
+			foreach(const QJDns::Record &r, results)
 			{
 				if(r.type == QJDns::A)
 					addrs += r.address;

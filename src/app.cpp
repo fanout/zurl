@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <assert.h>
 #include <QHash>
+#include <QSettings>
+#include <QHostAddress>
 #include "jdnsshared.h"
 #include "qzmqsocket.h"
 #include "qzmqreprouter.h"
@@ -40,25 +42,102 @@ public:
 	QZmq::RepRouter *in_req_sock;
 	QZmq::Socket *in_sock;
 	QZmq::Socket *out_sock;
+	QString defaultPolicy;
+	QStringList allowExps, denyExps;
 	QHash<Request*, RequestState*> requestStateByRequest;
 
 	Private(App *_q) :
 		QObject(_q),
 		q(_q)
 	{
+	}
+
+	void start()
+	{
+		QStringList args = QCoreApplication::instance()->arguments();
+		args.removeFirst();
+
+		// options
+		QHash<QString, QString> options;
+		for(int n = 0; n < args.count(); ++n)
+		{
+			if(args[n].startsWith("--"))
+			{
+				QString opt = args[n].mid(2);
+				QString var, val;
+
+				int at = opt.indexOf("=");
+				if(at != -1)
+				{
+					var = opt.mid(0, at);
+					val = opt.mid(at + 1);
+				}
+				else
+					var = opt;
+
+				options[var] = val;
+
+				args.removeAt(n);
+				--n; // adjust position
+			}
+		}
+
+		QString configFile = options["config"];
+		if(configFile.isEmpty())
+			configFile = "/etc/yurl.conf";
+
+		// QSettings doesn't inform us if the config file doesn't exist, so do that ourselves
+		{
+			QFile file(configFile);
+			if(!file.open(QIODevice::ReadOnly))
+			{
+				fprintf(stderr, "error: failed to open %s\n", qPrintable(configFile));
+				emit q->quit();
+				return;
+			}
+		}
+
+		QSettings settings(configFile, QSettings::IniFormat);
+
+		QString in_url = settings.value("in_spec").toString();
+		QString out_url = settings.value("out_spec").toString();
+		QString in_req_url = settings.value("in_req_spec").toString();
+
+		if(!in_url.isEmpty() && out_url.isEmpty())
+		{
+			fprintf(stderr, "error: in_spec set but not out_spec\n");
+			emit q->quit();
+			return;
+		}
+
+		if(in_url.isEmpty() && !out_url.isEmpty())
+		{
+			fprintf(stderr, "error: out_spec set but not in_spec\n");
+			emit q->quit();
+			return;
+		}
+
+		if(in_url.isEmpty() && in_req_url.isEmpty())
+		{
+			fprintf(stderr, "error: must set at least in_spec+out_spec or in_req_spec\n");
+			emit q->quit();
+			return;
+		}
+
+		defaultPolicy = settings.value("defpolicy").toString();
+		if(defaultPolicy != "allow" && defaultPolicy != "deny")
+		{
+			fprintf(stderr, "error: must set defpolicy to either \"allow\" or \"deny\"\n");
+			emit q->quit();
+			return;
+		}
+
+		allowExps = settings.value("allow").toStringList();
+		denyExps = settings.value("deny").toStringList();
+
 		dns = new JDnsShared(JDnsShared::UnicastInternet, this);
 		dns->addInterface(QHostAddress::Any);
 		dns->addInterface(QHostAddress::AnyIPv6);
-
-		// TODO: read configuration
-		QString in_req_url = "tcp://*:5550";
-		QString in_url = "tcp://*:5551";
-		QString out_url = "tcp://*:5552";
-
-		in_req_sock = new QZmq::RepRouter(this);
-		connect(in_req_sock, SIGNAL(readyRead()), SLOT(in_req_readyRead()));
-		connect(in_req_sock, SIGNAL(messagesWritten(int)), SLOT(in_req_messagesWritten(int)));
-		in_req_sock->bind(in_req_url);
 
 		in_sock = new QZmq::Socket(QZmq::Socket::Pull, this);
 		connect(in_sock, SIGNAL(readyRead()), SLOT(in_readyRead()));
@@ -68,19 +147,75 @@ public:
 		connect(out_sock, SIGNAL(messagesWritten(int)), SLOT(out_messagesWritten(int)));
 		out_sock->bind(out_url);
 
-		//QVariant val = TnetString::toVariant("35:4:myid,3:GET,18:http://andbit.net/,]");
-		//printf("%s\n", qPrintable(TnetString::variantToString(val)));
+		in_req_sock = new QZmq::RepRouter(this);
+		connect(in_req_sock, SIGNAL(readyRead()), SLOT(in_req_readyRead()));
+		connect(in_req_sock, SIGNAL(messagesWritten(int)), SLOT(in_req_messagesWritten(int)));
+		in_req_sock->bind(in_req_url);
+
+		fprintf(stderr, "yurl: initialized and ready to serve\n");
 	}
 
-	void start()
+	static bool matchExp(const QString &exp, const QString &s)
 	{
+		int at = exp.indexOf('*');
+		if(at != -1)
+		{
+			QString start = exp.mid(0, at);
+			QString end = exp.mid(at + 1);
+			return (s.startsWith(start, Qt::CaseInsensitive) && s.endsWith(end, Qt::CaseInsensitive));
+		}
+		else
+			return s.compare(exp, Qt::CaseInsensitive);
+	}
+
+	bool checkAllow(const QString &in) const
+	{
+		foreach(const QString &exp, allowExps)
+		{
+			if(matchExp(exp, in))
+				return true;
+		}
+
+		return false;
+	}
+
+	bool checkDeny(const QString &in) const
+	{
+		foreach(const QString &exp, denyExps)
+		{
+			if(matchExp(exp, in))
+				return true;
+		}
+
+		return false;
+	}
+
+	bool isAllowed(const QString &in) const
+	{
+		if(defaultPolicy == "allow")
+			return !checkDeny(in) || checkAllow(in);
+		else
+			return checkAllow(in) && !checkDeny(in);
 	}
 
 	void setupRequest(const RequestPacket &p, RequestState *state)
 	{
 		printf("request: id=[%s], method=[%s], url=[%s]\n", p.id.data(), qPrintable(p.method), qPrintable(p.url.toString()));
 
+		if(!isAllowed(p.url.host()))
+		{
+			ResponsePacket resp;
+			resp.id = p.id;
+			resp.isError = true;
+			resp.condition = "policy-violation";
+			state->id = p.id;
+			writeResponse(resp, state);
+			delete state;
+			return;
+		}
+
 		Request *req = new Request(dns, this);
+		connect(req, SIGNAL(nextAddress(const QHostAddress &)), SLOT(req_nextAddress(const QHostAddress &)));
 		connect(req, SIGNAL(readyRead()), SLOT(req_readyRead()));
 		connect(req, SIGNAL(error()), SLOT(req_error()));
 		if(p.maxResponseSize != -1)
@@ -191,6 +326,27 @@ private slots:
 	{
 		// TODO
 		Q_UNUSED(count);
+	}
+
+	void req_nextAddress(const QHostAddress &addr)
+	{
+		Request *req = (Request *)sender();
+		RequestState *state = requestStateByRequest[req];
+		assert(state);
+
+		if(!isAllowed(addr.toString()))
+		{
+			ResponsePacket resp;
+			resp.id = state->id;
+			resp.isError = true;
+			resp.condition = "policy-violation";
+			writeResponse(resp, state);
+
+			requestStateByRequest.remove(req);
+			delete state;
+			req->disconnect(this);
+			req->deleteLater();
+		}
 	}
 
 	void req_readyRead()
