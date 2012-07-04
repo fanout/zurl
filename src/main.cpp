@@ -1,5 +1,6 @@
 #include <QCoreApplication>
 #include <QTimer>
+#include <QtCrypto>
 #include "app.h"
 
 class AppMain : public QObject
@@ -20,6 +21,7 @@ signals:
 
 int main(int argc, char **argv)
 {
+	QCA::Initializer qcaInit;
 	QCoreApplication qapp(argc, argv);
 	AppMain appMain;
 	QObject::connect(&appMain, SIGNAL(quit()), &qapp, SLOT(quit()));

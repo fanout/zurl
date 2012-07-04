@@ -20,6 +20,7 @@ public:
 		ErrorGeneric,
 		ErrorPolicy,
 		ErrorConnect,
+		ErrorTls,
 		ErrorTimeout,
 		ErrorMaxSizeExceeded
 	};

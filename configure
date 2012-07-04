@@ -282,6 +282,9 @@ cat >$1/modules_new.cpp <<EOT
     o = new qc_qt47(conf);
     o->required = true;
     o->disabled = false;
+    o = new qc_internal_pkgconfig(conf, "qca2", "qca >= 2.0", VersionMin, "2.0");
+    o->required = true;
+    o->disabled = false;
     o = new qc_internal_pkgconfig(conf, "libzmq", "libzmq >= 2.0", VersionMin, "2.0");
     o->required = true;
     o->disabled = false;

@@ -5,6 +5,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QNetworkReply>
+#include <QtCrypto>
 #include "jdnsshared.h"
 
 class Request::Private : public QObject
@@ -176,8 +177,18 @@ private slots:
 
 	void reply_error(QNetworkReply::NetworkError code)
 	{
+		QVariant v = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute);
+		if(v.isValid())
+		{
+			// qnetworkreply will signal error even if we got a response. so, let's
+			//   ignore the error if it looks like we got a response.
+			return;
+		}
+
 		if(code == QNetworkReply::ConnectionRefusedError)
 			errorCondition = Request::ErrorConnect;
+		else if(code == QNetworkReply::SslHandshakeFailedError)
+			errorCondition = Request::ErrorTls;
 		else if(code == QNetworkReply::TimeoutError)
 			errorCondition = Request::ErrorTimeout;
 		else
@@ -188,8 +199,15 @@ private slots:
 
 	void reply_sslErrors(const QList<QSslError> &errors)
 	{
-		// we don't need to do anything here as error() still gets emitted either way
-		Q_UNUSED(errors);
+		// we'll almost always get a host mismatch error since we replace the host with ip address
+		if(errors.count() == 1 && errors[0].error() == QSslError::HostNameMismatch)
+		{
+			// in that case, do our own host matching using qca
+			QSslCertificate qtCert = reply->sslConfiguration().peerCertificate();
+			QCA::Certificate qcaCert = QCA::Certificate::fromDER(qtCert.toDer());
+			if(qcaCert.matchesHostName(host))
+				reply->ignoreSslErrors();
+		}
 	}
 };
 

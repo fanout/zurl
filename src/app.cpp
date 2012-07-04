@@ -6,6 +6,7 @@
 #include <QHash>
 #include <QSettings>
 #include <QHostAddress>
+#include <QtCrypto>
 #include "jdnsshared.h"
 #include "qzmqsocket.h"
 #include "qzmqreprouter.h"
@@ -102,6 +103,13 @@ public:
 
 	void start()
 	{
+		if(!QCA::isSupported("cert"))
+		{
+			log_error("missing qca \"cert\" feature. install qca-ossl");
+			emit q->quit();
+			return;
+		}
+
 		QStringList args = QCoreApplication::instance()->arguments();
 		args.removeFirst();
 
@@ -471,6 +479,7 @@ private slots:
 		{
 			case Request::ErrorPolicy:          p.condition = "policy-violation"; break;
 			case Request::ErrorConnect:         p.condition = "remote-connection-failed"; break;
+			case Request::ErrorTls:             p.condition = "tls-error"; break;
 			case Request::ErrorTimeout:         p.condition = "connection-timeout"; break;
 			case Request::ErrorMaxSizeExceeded: p.condition = "max-size-exceeded"; break;
 			case Request::ErrorGeneric:

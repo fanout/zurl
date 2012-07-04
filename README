@@ -2,12 +2,13 @@ Yurl
 ----
 Author: Justin Karneges <justin@fanout.io>
 
-HTTP URL requesting service accessible via ZeroMQ.
+HTTP client worker with ZeroMQ interface, written in Qt/C++.
 
 Features:
 
   - Request HTTP and HTTPS URLs
   - Completely event-driven, using JDNS and QNetworkAccessManager
+  - Handle thousands of simultaneous outbound connections
   - Two access methods: REQ and PUSH/SUB (think Mongrel2 in reverse!)
   - Streaming responses
   - Packet format uses TNetStrings
@@ -15,7 +16,8 @@ Features:
 
 Requirements:
 
-  Qt >= 4.7
+  qt >= 4.7
+  qca >= 2.0 (and a cert-supporting plugin, like qca-ossl)
   libzmq >= 2.0
 
 If accessing from Git, be sure to pull submodules:
