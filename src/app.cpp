@@ -16,6 +16,8 @@
 #include "responsepacket.h"
 #include "tnetstring.h"
 
+#define VERSION "1.0"
+
 class App::Private : public QObject
 {
 	Q_OBJECT
@@ -140,6 +142,13 @@ public:
 				args.removeAt(n);
 				--n; // adjust position
 			}
+		}
+
+		if(options.contains("version"))
+		{
+			printf("Yurl %s\n", VERSION);
+			emit q->quit();
+			return;
 		}
 
 		if(options.contains("verbose"))
