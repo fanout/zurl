@@ -1,5 +1,6 @@
-Yurl
-----
+Yurl 1.0
+--------
+Date: July 3rd, 2012
 Author: Justin Karneges <justin@fanout.io>
 
 HTTP client worker with ZeroMQ interface, written in Qt/C++.
