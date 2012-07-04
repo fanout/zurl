@@ -20,7 +20,8 @@ public:
 		ErrorGeneric,
 		ErrorPolicy,
 		ErrorConnect,
-		ErrorTimeout
+		ErrorTimeout,
+		ErrorMaxSizeExceeded
 	};
 
 	Request(JDnsShared *dns, QObject *parent = 0);
@@ -29,6 +30,7 @@ public:
 	void setMaximumResponseSize(int size);
 
 	void start(const QString &method, const QUrl &url, const QList<Header> &headers, const QByteArray &body);
+	void stop();
 
 	bool isFinished() const;
 	ErrorCondition errorCondition() const;

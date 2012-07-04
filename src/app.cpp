@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <assert.h>
+#include <stdarg.h>
 #include <QHash>
 #include <QSettings>
 #include <QHostAddress>
@@ -38,6 +39,7 @@ public:
 	};
 
 	App *q;
+	bool verbose;
 	JDnsShared *dns;
 	QZmq::RepRouter *in_req_sock;
 	QZmq::Socket *in_sock;
@@ -48,8 +50,54 @@ public:
 
 	Private(App *_q) :
 		QObject(_q),
-		q(_q)
+		q(_q),
+		verbose(false)
 	{
+	}
+
+	void log(int level, const char *fmt, va_list ap) const
+	{
+		if(level <= 1 || verbose)
+		{
+			QString str;
+			str.vsprintf(fmt, ap);
+
+			const char *lstr;
+			switch(level)
+			{
+				case 0: lstr = "ERR"; break;
+				case 1: lstr = "WARN"; break;
+				case 2:
+				default:
+					lstr = "INFO"; break;
+			}
+
+			fprintf(stderr, "[%s] %s\n", lstr, qPrintable(str));
+		}
+	}
+
+	void log_info(const char *fmt, ...) const
+	{
+		va_list ap;
+		va_start(ap, fmt);
+		log(2, fmt, ap);
+		va_end(ap);
+	}
+
+	void log_warning(const char *fmt, ...) const
+	{
+		va_list ap;
+		va_start(ap, fmt);
+		log(1, fmt, ap);
+		va_end(ap);
+	}
+
+	void log_error(const char *fmt, ...) const
+	{
+		va_list ap;
+		va_start(ap, fmt);
+		log(0, fmt, ap);
+		va_end(ap);
 	}
 
 	void start()
@@ -61,7 +109,11 @@ public:
 		QHash<QString, QString> options;
 		for(int n = 0; n < args.count(); ++n)
 		{
-			if(args[n].startsWith("--"))
+			if(args[n] == "--")
+			{
+				break;
+			}
+			else if(args[n].startsWith("--"))
 			{
 				QString opt = args[n].mid(2);
 				QString var, val;
@@ -82,6 +134,9 @@ public:
 			}
 		}
 
+		if(options.contains("verbose"))
+			verbose = true;
+
 		QString configFile = options["config"];
 		if(configFile.isEmpty())
 			configFile = "/etc/yurl.conf";
@@ -91,7 +146,7 @@ public:
 			QFile file(configFile);
 			if(!file.open(QIODevice::ReadOnly))
 			{
-				fprintf(stderr, "error: failed to open %s\n", qPrintable(configFile));
+				log_error("failed to open %s, and --config not passed", qPrintable(configFile));
 				emit q->quit();
 				return;
 			}
@@ -105,21 +160,21 @@ public:
 
 		if(!in_url.isEmpty() && out_url.isEmpty())
 		{
-			fprintf(stderr, "error: in_spec set but not out_spec\n");
+			log_error("in_spec set but not out_spec");
 			emit q->quit();
 			return;
 		}
 
 		if(in_url.isEmpty() && !out_url.isEmpty())
 		{
-			fprintf(stderr, "error: out_spec set but not in_spec\n");
+			log_error("out_spec set but not in_spec");
 			emit q->quit();
 			return;
 		}
 
 		if(in_url.isEmpty() && in_req_url.isEmpty())
 		{
-			fprintf(stderr, "error: must set at least in_spec+out_spec or in_req_spec\n");
+			log_error("must set at least in_spec+out_spec or in_req_spec");
 			emit q->quit();
 			return;
 		}
@@ -127,7 +182,7 @@ public:
 		defaultPolicy = settings.value("defpolicy").toString();
 		if(defaultPolicy != "allow" && defaultPolicy != "deny")
 		{
-			fprintf(stderr, "error: must set defpolicy to either \"allow\" or \"deny\"\n");
+			log_error("must set defpolicy to either \"allow\" or \"deny\"");
 			emit q->quit();
 			return;
 		}
@@ -152,7 +207,7 @@ public:
 		connect(in_req_sock, SIGNAL(messagesWritten(int)), SLOT(in_req_messagesWritten(int)));
 		in_req_sock->bind(in_req_url);
 
-		fprintf(stderr, "yurl: initialized and ready to serve\n");
+		log_info("started");
 	}
 
 	static bool matchExp(const QString &exp, const QString &s)
@@ -198,9 +253,32 @@ public:
 			return checkAllow(in) && !checkDeny(in);
 	}
 
-	void setupRequest(const RequestPacket &p, RequestState *state)
+	// receiver non-empty on push interface, empty on req interface
+	void setupRequest(const QZmq::ReqMessage &msg, const QByteArray &receiver, const QVariant &data)
 	{
-		printf("request: id=[%s], method=[%s], url=[%s]\n", p.id.data(), qPrintable(p.method), qPrintable(p.url.toString()));
+		RequestPacket p;
+		if(!p.fromVariant(data))
+		{
+			log_warning("received message with invalid format (bad/missing fields), skipping");
+			return;
+		}
+
+		RequestState *state = new RequestState;
+
+		state->id = p.id;
+
+		if(!receiver.isEmpty())
+		{
+			state->receiver = receiver;
+			state->streaming = p.stream; // streaming only allowed on push interface
+		}
+		else
+		{
+			state->reqSource = true;
+			state->reqHeaders = msg.headers();
+		}
+
+		log_info("IN id=%s, %s %s", p.id.data(), qPrintable(p.method), qPrintable(p.url.toString()));
 
 		if(!isAllowed(p.url.host()))
 		{
@@ -208,8 +286,7 @@ public:
 			resp.id = p.id;
 			resp.isError = true;
 			resp.condition = "policy-violation";
-			state->id = p.id;
-			writeResponse(resp, state);
+			writeResponse(state, resp);
 			delete state;
 			return;
 		}
@@ -218,17 +295,27 @@ public:
 		connect(req, SIGNAL(nextAddress(const QHostAddress &)), SLOT(req_nextAddress(const QHostAddress &)));
 		connect(req, SIGNAL(readyRead()), SLOT(req_readyRead()));
 		connect(req, SIGNAL(error()), SLOT(req_error()));
-		if(p.maxResponseSize != -1)
-			req->setMaximumResponseSize(p.maxResponseSize);
+		if(p.maxSize != -1)
+			req->setMaximumResponseSize(p.maxSize);
 
-		state->id = p.id;
 		requestStateByRequest.insert(req, state);
-
 		req->start(p.method, p.url, p.headers, p.body);
 	}
 
-	void writeResponse(const ResponsePacket &p, RequestState *state)
+	void writeResponse(RequestState *state, const ResponsePacket &p)
 	{
+		if(p.isError)
+		{
+			log_info("OUT ERR id=%s condition=%s", p.id.data(), p.condition.data());
+		}
+		else
+		{
+			if(p.code != -1)
+				log_info("OUT id=%s code=%d %d%s", p.id.data(), p.code, p.body.size(), p.isLast ? " L" : "");
+			else
+				log_info("OUT id=%s %d%s", p.id.data(), p.body.size(), p.isLast ? " L" : "");
+		}
+
 		QByteArray msg = p.toByteArray();
 
 		if(state->reqSource)
@@ -237,13 +324,21 @@ public:
 			out_sock->write(QList<QByteArray>() << (state->receiver + ' ' + msg));
 	}
 
+	void destroyReq(Request *req)
+	{
+		req->disconnect(this);
+		req->setParent(0);
+		req->stop();
+		req->deleteLater();
+	}
+
 private slots:
 	void in_req_readyRead()
 	{
 		QZmq::ReqMessage reqMessage(in_req_sock->read());
 		if(reqMessage.content().count() != 1)
 		{
-			fprintf(stderr, "warning: received message with bad format (0), dropping\n");
+			log_warning("received message with parts != 1, skipping");
 			return;
 		}
 
@@ -251,23 +346,11 @@ private slots:
 		QVariant data = TnetString::toVariant(reqMessage.content()[0], 0, &ok);
 		if(!ok)
 		{
-			fprintf(stderr, "warning: received message with bad format (3), dropping\n");
+			log_warning("received message with invalid format (tnetstring parse failed), skipping");
 			return;
 		}
 
-		fprintf(stderr, "IN REQ: %s\n", qPrintable(TnetString::variantToString(data, -1)));
-
-		RequestPacket p;
-		if(!p.fromVariant(data))
-		{
-			fprintf(stderr, "bad format\n");
-			return;
-		}
-
-		RequestState *state = new RequestState;
-		state->reqSource = true;
-		state->reqHeaders = reqMessage.headers();
-		setupRequest(p, state);
+		setupRequest(reqMessage, QByteArray(), data);
 	}
 
 	void in_req_messagesWritten(int count)
@@ -281,21 +364,21 @@ private slots:
 		QList<QByteArray> msg = in_sock->read();
 		if(msg.count() != 1)
 		{
-			fprintf(stderr, "warning: received message with bad format (0), dropping\n");
+			log_warning("received message with parts != 1, skipping");
 			return;
 		}
 
 		int at = msg[0].indexOf(' ');
 		if(at == -1)
 		{
-			fprintf(stderr, "warning: received message with bad format (1), dropping\n");
+			log_warning("received message with invalid format (missing receiver), skipping");
 			return;
 		}
 
 		QByteArray receiver = msg[0].mid(0, at);
 		if(receiver.isEmpty())
 		{
-			fprintf(stderr, "warning: received message with bad format (2), dropping\n");
+			log_warning("received message with invalid format (receiver empty), skipping");
 			return;
 		}
 
@@ -303,23 +386,11 @@ private slots:
 		QVariant data = TnetString::toVariant(msg[0], at + 1, &ok);
 		if(!ok)
 		{
-			fprintf(stderr, "warning: received message with bad format (3), dropping\n");
+			log_warning("received message with invalid format (tnetstring parse failed), skipping");
 			return;
 		}
 
-		fprintf(stderr, "IN: %s %s\n", receiver.data(), qPrintable(TnetString::variantToString(data, -1)));
-
-		RequestPacket p;
-		if(!p.fromVariant(data))
-		{
-			fprintf(stderr, "bad format\n");
-			return;
-		}
-
-		RequestState *state = new RequestState;
-		state->receiver = receiver;
-		state->streaming = p.stream;
-		setupRequest(p, state);
+		setupRequest(QZmq::ReqMessage(), receiver, data);
 	}
 
 	void out_messagesWritten(int count)
@@ -340,12 +411,12 @@ private slots:
 			resp.id = state->id;
 			resp.isError = true;
 			resp.condition = "policy-violation";
-			writeResponse(resp, state);
+			writeResponse(state, resp);
 
 			requestStateByRequest.remove(req);
 			delete state;
-			req->disconnect(this);
-			req->deleteLater();
+
+			destroyReq(req);
 		}
 	}
 
@@ -376,12 +447,15 @@ private slots:
 
 		p.body = req->readResponseBody();
 
-		writeResponse(p, state);
+		writeResponse(state, p);
 
-		requestStateByRequest.remove(req);
-		delete state;
-		req->disconnect(this);
-		req->deleteLater();
+		if(req->isFinished())
+		{
+			requestStateByRequest.remove(req);
+			delete state;
+
+			destroyReq(req);
+		}
 	}
 
 	void req_error()
@@ -395,21 +469,22 @@ private slots:
 		p.isError = true;
 		switch(req->errorCondition())
 		{
-			case Request::ErrorPolicy:      p.condition = "policy-violation"; break;
-			case Request::ErrorConnect:     p.condition = "remote-connection-failed"; break;
-			case Request::ErrorTimeout:     p.condition = "connection-timeout"; break;
+			case Request::ErrorPolicy:          p.condition = "policy-violation"; break;
+			case Request::ErrorConnect:         p.condition = "remote-connection-failed"; break;
+			case Request::ErrorTimeout:         p.condition = "connection-timeout"; break;
+			case Request::ErrorMaxSizeExceeded: p.condition = "max-size-exceeded"; break;
 			case Request::ErrorGeneric:
 			default:
 				p.condition = "undefined-condition";
 				break;
 		}
 
-		writeResponse(p, state);
+		writeResponse(state, p);
 
 		requestStateByRequest.remove(req);
 		delete state;
-		req->disconnect(this);
-		req->deleteLater();
+
+		destroyReq(req);
 	}
 };
 

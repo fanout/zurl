@@ -23,12 +23,17 @@ QByteArray ResponsePacket::toByteArray() const
 	{
 		if(isLast)
 			obj["last"] = true;
-		obj["code"] = code;
-		obj["status"] = status;
-		QVariantList vheaders;
-		foreach(const Request::Header &h, headers)
-			vheaders += h.first + ": " + h.second;
-		obj["headers"] = vheaders;
+
+		if(code != -1)
+		{
+			obj["code"] = code;
+			obj["status"] = status;
+			QVariantList vheaders;
+			foreach(const Request::Header &h, headers)
+				vheaders += h.first + ": " + h.second;
+			obj["headers"] = vheaders;
+		}
+
 		obj["body"] = body;
 	}
 

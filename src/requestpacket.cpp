@@ -4,7 +4,7 @@
 
 RequestPacket::RequestPacket() :
 	stream(false),
-	maxResponseSize(-1)
+	maxSize(-1)
 {
 }
 
@@ -64,13 +64,13 @@ bool RequestPacket::fromVariant(const QVariant &in)
 		stream = obj["stream"].toBool();
 	}
 
-	maxResponseSize = -1;
-	if(obj.contains("maxResponseSize"))
+	maxSize = -1;
+	if(obj.contains("max-size"))
 	{
-		if(obj["maxResponseSize"].type() != QVariant::Int)
+		if(obj["max-size"].type() != QVariant::Int)
 			return false;
 
-		maxResponseSize = obj["maxResponseSize"].toInt();
+		maxSize = obj["max-size"].toInt();
 	}
 
 	return true;

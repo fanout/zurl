@@ -25,13 +25,17 @@ public:
 	QList<QHostAddress> addrs;
 	QNetworkReply *reply;
 	QByteArray inbuf;
+	int bytesReceived;
+	bool stopping;
 
 	Private(Request *_q, JDnsShared *_dns) :
 		QObject(_q),
 		q(_q),
 		dns(_dns),
 		maxResponseSize(-1),
-		reply(0)
+		reply(0),
+		bytesReceived(0),
+		stopping(false)
 	{
 		nam = new QNetworkAccessManager(this);
 	}
@@ -61,7 +65,7 @@ public:
 		if(!addr.isNull())
 		{
 			addrs += addr;
-			tryNextAddress();
+			QMetaObject::invokeMethod(this, "tryNextAddress", Qt::QueuedConnection);
 		}
 		else
 		{
@@ -71,6 +75,12 @@ public:
 		}
 	}
 
+	void stop()
+	{
+		stopping = true;
+	}
+
+private slots:
 	void tryNextAddress()
 	{
 		if(addrs.isEmpty())
@@ -84,6 +94,8 @@ public:
 		QHostAddress addr = addrs.takeFirst();
 
 		emit q->nextAddress(addr);
+		if(stopping)
+			return;
 
 		QNetworkRequest request;
 		QUrl tmpUrl = url;
@@ -118,7 +130,6 @@ public:
 		connect(reply, SIGNAL(sslErrors(const QList<QSslError> &)), SLOT(reply_sslErrors(const QList<QSslError> &)));
 	}
 
-private slots:
 	void dreq_resultsReady()
 	{
 		JDnsSharedRequest *dreq = (JDnsSharedRequest *)sender();
@@ -145,7 +156,16 @@ private slots:
 
 	void reply_readyRead()
 	{
-		inbuf += reply->readAll();
+		QByteArray buf = reply->readAll();
+		if(maxResponseSize != -1 && bytesReceived + buf.size() > maxResponseSize)
+		{
+			errorCondition = Request::ErrorMaxSizeExceeded;
+			emit q->error();
+			return;
+		}
+
+		bytesReceived += buf.size();
+		inbuf += buf;
 		emit q->readyRead();
 	}
 
@@ -192,6 +212,11 @@ void Request::setMaximumResponseSize(int size)
 void Request::start(const QString &method, const QUrl &url, const QList<Header> &headers, const QByteArray &body)
 {
 	d->start(method, url, headers, body);
+}
+
+void Request::stop()
+{
+	d->stop();
 }
 
 bool Request::isFinished() const

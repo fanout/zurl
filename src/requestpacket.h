@@ -16,7 +16,7 @@ public:
 	QList<Request::Header> headers;
 	QByteArray body;
 	bool stream;
-	int maxResponseSize;
+	int maxSize;
 
 	RequestPacket();
 
