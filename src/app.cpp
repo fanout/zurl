@@ -30,11 +30,13 @@ public:
 		bool reqSource;
 		QList<QByteArray> reqHeaders; // if reqSource is true
 		QByteArray id;
+		int seq;
 		bool streaming;
 		bool sentHeader;
 
 		RequestState() :
 			reqSource(false),
+			seq(0),
 			streaming(false),
 			sentHeader(false)
 		{
@@ -283,6 +285,7 @@ public:
 		RequestState *state = new RequestState;
 
 		state->id = p.id;
+		state->seq = 0;
 
 		if(!receiver.isEmpty())
 		{
@@ -300,7 +303,8 @@ public:
 		if(!isAllowed(p.url.host()))
 		{
 			ResponsePacket resp;
-			resp.id = p.id;
+			resp.id = state->id;
+			resp.seq = (state->seq)++;
 			resp.isError = true;
 			resp.condition = "policy-violation";
 			writeResponse(state, resp);
@@ -426,6 +430,7 @@ private slots:
 		{
 			ResponsePacket resp;
 			resp.id = state->id;
+			resp.seq = (state->seq)++;
 			resp.isError = true;
 			resp.condition = "policy-violation";
 			writeResponse(state, resp);
@@ -449,6 +454,7 @@ private slots:
 		ResponsePacket p;
 
 		p.id = state->id;
+		p.seq = (state->seq)++;
 		p.isLast = req->isFinished();
 
 		if(state->reqSource)
@@ -483,6 +489,7 @@ private slots:
 
 		ResponsePacket p;
 		p.id = state->id;
+		p.seq = (state->seq)++;
 		p.isError = true;
 		switch(req->errorCondition())
 		{

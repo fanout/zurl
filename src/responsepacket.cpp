@@ -13,6 +13,7 @@ QByteArray ResponsePacket::toByteArray() const
 {
 	QVariantHash obj;
 	obj["id"] = id;
+	obj["seq"] = seq;
 
 	if(isError)
 	{

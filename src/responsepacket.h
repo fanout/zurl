@@ -7,6 +7,7 @@ class ResponsePacket
 {
 public:
 	QByteArray id;
+	int seq;
 
 	bool isError;
 	QByteArray condition;
