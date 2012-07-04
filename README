@@ -32,7 +32,7 @@ Build:
 
 Run:
 
-  ./yurl --config=yurl.conf.example
+  ./yurl --verbose --config=yurl.conf.example
 
 Test:
 
