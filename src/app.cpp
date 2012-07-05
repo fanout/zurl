@@ -46,17 +46,24 @@ public:
 	App *q;
 	bool verbose;
 	JDnsShared *dns;
-	QZmq::RepRouter *in_req_sock;
 	QZmq::Socket *in_sock;
 	QZmq::Socket *out_sock;
+	QZmq::RepRouter *in_req_sock;
 	QString defaultPolicy;
 	QStringList allowExps, denyExps;
 	QHash<Request*, RequestState*> requestStateByRequest;
+	int workers;
+	int maxWorkers;
+	QList<bool> pendingWrites, reqPendingWrites;
 
 	Private(App *_q) :
 		QObject(_q),
 		q(_q),
-		verbose(false)
+		verbose(false),
+		in_sock(0),
+		out_sock(0),
+		in_req_sock(0),
+		workers(0)
 	{
 	}
 
@@ -176,6 +183,7 @@ public:
 		QString in_url = settings.value("in_spec").toString();
 		QString out_url = settings.value("out_spec").toString();
 		QString in_req_url = settings.value("in_req_spec").toString();
+		maxWorkers = settings.value("max_open_requests", 5000).toInt();
 
 		if(!in_url.isEmpty() && out_url.isEmpty())
 		{
@@ -213,18 +221,27 @@ public:
 		dns->addInterface(QHostAddress::Any);
 		dns->addInterface(QHostAddress::AnyIPv6);
 
-		in_sock = new QZmq::Socket(QZmq::Socket::Pull, this);
-		connect(in_sock, SIGNAL(readyRead()), SLOT(in_readyRead()));
-		in_sock->bind(in_url);
+		if(!in_url.isEmpty())
+		{
+			in_sock = new QZmq::Socket(QZmq::Socket::Pull, this);
+			connect(in_sock, SIGNAL(readyRead()), SLOT(in_readyRead()));
+			in_sock->bind(in_url);
+		}
 
-		out_sock = new QZmq::Socket(QZmq::Socket::Pub, this);
-		connect(out_sock, SIGNAL(messagesWritten(int)), SLOT(out_messagesWritten(int)));
-		out_sock->bind(out_url);
+		if(!out_url.isEmpty())
+		{
+			out_sock = new QZmq::Socket(QZmq::Socket::Pub, this);
+			connect(out_sock, SIGNAL(messagesWritten(int)), SLOT(out_messagesWritten(int)));
+			out_sock->bind(out_url);
+		}
 
-		in_req_sock = new QZmq::RepRouter(this);
-		connect(in_req_sock, SIGNAL(readyRead()), SLOT(in_req_readyRead()));
-		connect(in_req_sock, SIGNAL(messagesWritten(int)), SLOT(in_req_messagesWritten(int)));
-		in_req_sock->bind(in_req_url);
+		if(!in_req_url.isEmpty())
+		{
+			in_req_sock = new QZmq::RepRouter(this);
+			connect(in_req_sock, SIGNAL(readyRead()), SLOT(in_req_readyRead()));
+			connect(in_req_sock, SIGNAL(messagesWritten(int)), SLOT(in_req_messagesWritten(int)));
+			in_req_sock->bind(in_req_url);
+		}
 
 		log_info("started");
 	}
@@ -298,7 +315,9 @@ public:
 			state->reqHeaders = msg.headers();
 		}
 
-		log_info("IN id=%s, %s %s", p.id.data(), qPrintable(p.method), qPrintable(p.url.toString()));
+		++workers;
+
+		log_info("IN wc=%d id=%s, %s %s", workers, p.id.data(), qPrintable(p.method), qPrintable(p.url.toString()));
 
 		if(!isAllowed(p.url.host()))
 		{
@@ -325,6 +344,10 @@ public:
 
 	void writeResponse(RequestState *state, const ResponsePacket &p)
 	{
+		bool significantWrite = false;
+		if(p.isError || p.isLast)
+			significantWrite = true;
+
 		if(p.isError)
 		{
 			log_info("OUT ERR id=%s condition=%s", p.id.data(), p.condition.data());
@@ -340,9 +363,15 @@ public:
 		QByteArray msg = p.toByteArray();
 
 		if(state->reqSource)
+		{
+			reqPendingWrites += significantWrite;
 			in_req_sock->write(QZmq::ReqMessage(state->reqHeaders, QList<QByteArray>() << msg).toRawMessage());
+		}
 		else
+		{
+			pendingWrites += significantWrite;
 			out_sock->write(QList<QByteArray>() << (state->receiver + ' ' + msg));
+		}
 	}
 
 	void destroyReq(Request *req)
@@ -354,34 +383,20 @@ public:
 	}
 
 private slots:
-	void in_req_readyRead()
+	void tryReads()
 	{
-		QZmq::ReqMessage reqMessage(in_req_sock->read());
-		if(reqMessage.content().count() != 1)
-		{
-			log_warning("received message with parts != 1, skipping");
-			return;
-		}
+		if(in_sock && in_sock->canRead())
+			in_readyRead();
 
-		bool ok;
-		QVariant data = TnetString::toVariant(reqMessage.content()[0], 0, &ok);
-		if(!ok)
-		{
-			log_warning("received message with invalid format (tnetstring parse failed), skipping");
-			return;
-		}
-
-		setupRequest(reqMessage, QByteArray(), data);
-	}
-
-	void in_req_messagesWritten(int count)
-	{
-		// TODO
-		Q_UNUSED(count);
+		if(in_req_sock && in_req_sock->canRead())
+			in_req_readyRead();
 	}
 
 	void in_readyRead()
 	{
+		if(workers >= maxWorkers)
+			return;
+
 		QList<QByteArray> msg = in_sock->read();
 		if(msg.count() != 1)
 		{
@@ -416,8 +431,63 @@ private slots:
 
 	void out_messagesWritten(int count)
 	{
-		// TODO
-		Q_UNUSED(count);
+		bool needRead = false;
+
+		for(int n = 0; n < count; ++n)
+		{
+			bool significantWrite = pendingWrites.takeFirst();
+			if(significantWrite)
+			{
+				--workers;
+				if((in_sock && in_sock->canRead()) || (in_req_sock && in_req_sock->canRead()))
+					needRead = true;
+			}
+		}
+
+		if(needRead)
+			QMetaObject::invokeMethod(this, "tryReads", Qt::QueuedConnection);
+	}
+
+	void in_req_readyRead()
+	{
+		if(workers >= maxWorkers)
+			return;
+
+		QZmq::ReqMessage reqMessage(in_req_sock->read());
+		if(reqMessage.content().count() != 1)
+		{
+			log_warning("received message with parts != 1, skipping");
+			return;
+		}
+
+		bool ok;
+		QVariant data = TnetString::toVariant(reqMessage.content()[0], 0, &ok);
+		if(!ok)
+		{
+			log_warning("received message with invalid format (tnetstring parse failed), skipping");
+			return;
+		}
+
+		setupRequest(reqMessage, QByteArray(), data);
+	}
+
+	void in_req_messagesWritten(int count)
+	{
+		bool needRead = false;
+
+		for(int n = 0; n < count; ++n)
+		{
+			bool significantWrite = reqPendingWrites.takeFirst();
+			if(significantWrite)
+			{
+				--workers;
+				if((in_sock && in_sock->canRead()) || (in_req_sock && in_req_sock->canRead()))
+					needRead = true;
+			}
+		}
+
+		if(needRead)
+			QMetaObject::invokeMethod(this, "tryReads", Qt::QueuedConnection);
 	}
 
 	void req_nextAddress(const QHostAddress &addr)
