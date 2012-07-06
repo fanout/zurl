@@ -10,9 +10,11 @@ Usage: $0 [OPTION]...
 This script creates necessary configuration files to build/install.
 
 Main options:
-  --qtdir=[path]    Directory where Qt is installed.
-  --verbose         Show extra configure output.
-  --help            This help text.
+  --prefix=[path]    Base path for build/install.  Default: /usr/local
+  --bindir=[path]    Directory for binaries.  Default: PREFIX/bin
+  --qtdir=[path]     Directory where Qt is installed.
+  --verbose          Show extra configure output.
+  --help             This help text.
 
 EOT
 }
@@ -109,6 +111,16 @@ show_qt_info() {
 while [ $# -gt 0 ]; do
 	optarg=`expr "x$1" : 'x[^=]*=\(.*\)'`
 	case "$1" in
+		--prefix=*)
+			PREFIX=$optarg
+			shift
+			;;
+
+		--bindir=*)
+			BINDIR=$optarg
+			shift
+			;;
+
 		--qtdir=*)
 			EX_QTDIR=$optarg
 			shift
@@ -123,11 +135,15 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
+PREFIX=${PREFIX:-/usr/local}
+BINDIR=${BINDIR:-$PREFIX/bin}
 
 echo "Configuring Yurl ..."
 
 if [ "$QC_VERBOSE" = "Y" ]; then
 echo
+echo PREFIX=$PREFIX
+echo BINDIR=$BINDIR
 echo EX_QTDIR=$EX_QTDIR
 echo
 fi
@@ -1306,6 +1322,8 @@ DEFINES += HAVE_MODULES
 EOT
 }
 
+export PREFIX
+export BINDIR
 export EX_QTDIR
 export QC_VERBOSE
 rm -rf .qconftemp

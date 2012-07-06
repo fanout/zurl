@@ -5,5 +5,10 @@ QT += network
 TARGET = yurl
 DESTDIR = ..
 
-exists(../conf.pri):include(../conf.pri)
+include($$OUT_PWD/../conf.pri)
 include(src.pri)
+
+unix:!isEmpty(BINDIR) {
+	target.path = $$BINDIR
+	INSTALLS += target
+}
