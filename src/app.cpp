@@ -183,7 +183,7 @@ public:
 		QString in_url = settings.value("in_spec").toString();
 		QString out_url = settings.value("out_spec").toString();
 		QString in_req_url = settings.value("in_req_spec").toString();
-		maxWorkers = settings.value("max_open_requests", 5000).toInt();
+		maxWorkers = settings.value("max_open_requests", -1).toInt();
 
 		if(!in_url.isEmpty() && out_url.isEmpty())
 		{
@@ -413,7 +413,7 @@ private slots:
 
 	void in_readyRead()
 	{
-		if(workers >= maxWorkers)
+		if(maxWorkers != -1 && workers >= maxWorkers)
 			return;
 
 		QList<QByteArray> msg = in_sock->read();
@@ -455,7 +455,7 @@ private slots:
 
 	void in_req_readyRead()
 	{
-		if(workers >= maxWorkers)
+		if(maxWorkers != -1 && workers >= maxWorkers)
 			return;
 
 		QZmq::ReqMessage reqMessage(in_req_sock->read());
