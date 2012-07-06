@@ -29,6 +29,7 @@ public:
 	~Request();
 
 	void setMaximumResponseSize(int size);
+	void setConnectHost(const QString &host);
 
 	void start(const QString &method, const QUrl &url, const QList<Header> &headers, const QByteArray &body);
 	void stop();

@@ -17,6 +17,7 @@ public:
 	QByteArray body;
 	bool stream;
 	int maxSize;
+	QString connectHost;
 
 	RequestPacket();
 

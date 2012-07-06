@@ -73,5 +73,14 @@ bool RequestPacket::fromVariant(const QVariant &in)
 		maxSize = obj["max-size"].toInt();
 	}
 
+	connectHost.clear();
+	if(obj.contains("connect-host"))
+	{
+		if(obj["connect-host"].type() != QVariant::ByteArray)
+			return false;
+
+		connectHost = QString::fromUtf8(obj["connect-host"].toByteArray());
+	}
+
 	return true;
 }

@@ -16,6 +16,7 @@ public:
 	Request *q;
 	JDnsShared *dns;
 	int maxResponseSize;
+	QString connectHost;
 	Request::ErrorCondition errorCondition;
 	QNetworkAccessManager *nam;
 	QString method;
@@ -61,7 +62,11 @@ public:
 		headers = _headers;
 		outbuf = body;
 
-		host = url.host();
+		if(!connectHost.isEmpty())
+			host = connectHost;
+		else
+			host = url.host();
+
 		QHostAddress addr(host);
 		if(!addr.isNull())
 		{
@@ -102,7 +107,7 @@ private slots:
 		QUrl tmpUrl = url;
 		tmpUrl.setHost(addr.toString());
 		request.setUrl(tmpUrl);
-		request.setRawHeader("Host", host.toUtf8());
+		request.setRawHeader("Host", url.host().toUtf8());
 
 		foreach(const Request::Header &h, headers)
 			request.setRawHeader(h.first, h.second);
@@ -205,7 +210,7 @@ private slots:
 			// in that case, do our own host matching using qca
 			QSslCertificate qtCert = reply->sslConfiguration().peerCertificate();
 			QCA::Certificate qcaCert = QCA::Certificate::fromDER(qtCert.toDer());
-			if(qcaCert.matchesHostName(host))
+			if(qcaCert.matchesHostName(url.host()))
 				reply->ignoreSslErrors();
 		}
 	}
@@ -225,6 +230,11 @@ Request::~Request()
 void Request::setMaximumResponseSize(int size)
 {
 	d->maxResponseSize = size;
+}
+
+void Request::setConnectHost(const QString &host)
+{
+	d->connectHost = host;
 }
 
 void Request::start(const QString &method, const QUrl &url, const QList<Header> &headers, const QByteArray &body)

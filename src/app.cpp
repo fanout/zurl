@@ -337,6 +337,8 @@ public:
 		connect(req, SIGNAL(error()), SLOT(req_error()));
 		if(p.maxSize != -1)
 			req->setMaximumResponseSize(p.maxSize);
+		if(!p.connectHost.isEmpty())
+			req->setConnectHost(p.connectHost);
 
 		requestStateByRequest.insert(req, state);
 		req->start(p.method, p.url, p.headers, p.body);
