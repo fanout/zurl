@@ -382,6 +382,25 @@ public:
 		req->deleteLater();
 	}
 
+	void handleWritten(QList<bool> *queue, int count)
+	{
+		bool needRead = false;
+
+		for(int n = 0; n < count; ++n)
+		{
+			bool significantWrite = queue->takeFirst();
+			if(significantWrite)
+			{
+				--workers;
+				if((in_sock && in_sock->canRead()) || (in_req_sock && in_req_sock->canRead()))
+					needRead = true;
+			}
+		}
+
+		if(needRead)
+			QMetaObject::invokeMethod(this, "tryReads", Qt::QueuedConnection);
+	}
+
 private slots:
 	void tryReads()
 	{
@@ -431,21 +450,7 @@ private slots:
 
 	void out_messagesWritten(int count)
 	{
-		bool needRead = false;
-
-		for(int n = 0; n < count; ++n)
-		{
-			bool significantWrite = pendingWrites.takeFirst();
-			if(significantWrite)
-			{
-				--workers;
-				if((in_sock && in_sock->canRead()) || (in_req_sock && in_req_sock->canRead()))
-					needRead = true;
-			}
-		}
-
-		if(needRead)
-			QMetaObject::invokeMethod(this, "tryReads", Qt::QueuedConnection);
+		handleWritten(&pendingWrites, count);
 	}
 
 	void in_req_readyRead()
@@ -473,21 +478,7 @@ private slots:
 
 	void in_req_messagesWritten(int count)
 	{
-		bool needRead = false;
-
-		for(int n = 0; n < count; ++n)
-		{
-			bool significantWrite = reqPendingWrites.takeFirst();
-			if(significantWrite)
-			{
-				--workers;
-				if((in_sock && in_sock->canRead()) || (in_req_sock && in_req_sock->canRead()))
-					needRead = true;
-			}
-		}
-
-		if(needRead)
-			QMetaObject::invokeMethod(this, "tryReads", Qt::QueuedConnection);
+		handleWritten(&reqPendingWrites, count);
 	}
 
 	void req_nextAddress(const QHostAddress &addr)
