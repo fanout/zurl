@@ -24,6 +24,6 @@ if "error" in resp:
 
 print "code=%d status=[%s]" % (resp["code"], resp["status"])
 for h in resp["headers"]:
-	print h
+	print "%s: %s" % (h[0], h[1])
 
 print "\n%s" % resp["body"]

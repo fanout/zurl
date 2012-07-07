@@ -31,7 +31,12 @@ QByteArray ResponsePacket::toByteArray() const
 			obj["status"] = status;
 			QVariantList vheaders;
 			foreach(const Request::Header &h, headers)
-				vheaders += h.first + ": " + h.second;
+			{
+				QVariantList vheader;
+				vheader += h.first;
+				vheader += h.second;
+				vheaders += vheader;
+			}
 			obj["headers"] = vheaders;
 		}
 
