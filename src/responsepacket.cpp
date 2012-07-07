@@ -35,7 +35,7 @@ QByteArray ResponsePacket::toByteArray() const
 				QVariantList vheader;
 				vheader += h.first;
 				vheader += h.second;
-				vheaders += vheader;
+				vheaders += QVariant(vheader);
 			}
 			obj["headers"] = vheaders;
 		}
