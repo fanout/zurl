@@ -38,5 +38,8 @@ QByteArray ResponsePacket::toByteArray() const
 		obj["body"] = body;
 	}
 
+	if(userData.isValid())
+		obj["user-data"] = userData;
+
 	return TnetString::fromVariant(obj);
 }

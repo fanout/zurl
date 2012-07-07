@@ -2,9 +2,8 @@
 #define REQUESTPACKET_H
 
 #include <QUrl>
+#include <QVariant>
 #include "request.h"
-
-class QVariant;
 
 class RequestPacket
 {
@@ -18,6 +17,7 @@ public:
 	bool stream;
 	int maxSize;
 	QString connectHost;
+	QVariant userData;
 
 	RequestPacket();
 

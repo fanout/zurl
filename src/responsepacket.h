@@ -1,6 +1,7 @@
 #ifndef RESPONSEPACKET_H
 #define RESPONSEPACKET_H
 
+#include <QVariant>
 #include "request.h"
 
 class ResponsePacket
@@ -17,6 +18,7 @@ public:
 	QByteArray status;
 	QList<Request::Header> headers;
 	QByteArray body;
+	QVariant userData;
 
 	ResponsePacket();
 

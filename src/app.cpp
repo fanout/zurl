@@ -33,6 +33,7 @@ public:
 		int seq;
 		bool streaming;
 		bool sentHeader;
+		QVariant userData;
 
 		RequestState() :
 			reqSource(false),
@@ -303,6 +304,7 @@ public:
 
 		state->id = p.id;
 		state->seq = 0;
+		state->userData = p.userData;
 
 		if(!receiver.isEmpty())
 		{
@@ -326,6 +328,7 @@ public:
 			resp.seq = (state->seq)++;
 			resp.isError = true;
 			resp.condition = "policy-violation";
+			resp.userData = state->userData;
 			writeResponse(state, resp);
 			delete state;
 			return;
@@ -496,6 +499,7 @@ private slots:
 			resp.seq = (state->seq)++;
 			resp.isError = true;
 			resp.condition = "policy-violation";
+			resp.userData = state->userData;
 			writeResponse(state, resp);
 
 			requestStateByRequest.remove(req);
@@ -533,6 +537,8 @@ private slots:
 
 		p.body = req->readResponseBody();
 
+		p.userData = state->userData;
+
 		writeResponse(state, p);
 
 		if(req->isFinished())
@@ -567,6 +573,7 @@ private slots:
 				break;
 		}
 
+		p.userData = state->userData;
 		writeResponse(state, p);
 
 		requestStateByRequest.remove(req);

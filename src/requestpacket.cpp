@@ -82,5 +82,7 @@ bool RequestPacket::fromVariant(const QVariant &in)
 		connectHost = QString::fromUtf8(obj["connect-host"].toByteArray());
 	}
 
+	userData = obj["user-data"];
+
 	return true;
 }
