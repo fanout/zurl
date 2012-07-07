@@ -319,7 +319,7 @@ public:
 
 		log_info("IN wc=%d id=%s, %s %s", workers, p.id.data(), qPrintable(p.method), qPrintable(p.url.toString()));
 
-		if(!isAllowed(p.url.host()))
+		if(!isAllowed(p.url.host()) || (!p.connectHost.isEmpty() && !isAllowed(p.connectHost)))
 		{
 			ResponsePacket resp;
 			resp.id = state->id;
