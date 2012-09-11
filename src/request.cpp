@@ -122,6 +122,8 @@ private slots:
 			reply = nam->put(request, outbuf);
 		else if(method == "DELETE")
 			reply = nam->deleteResource(request);
+		else if(method == "OPTIONS")
+			reply = nam->sendCustomRequest(request, "OPTIONS");
 		else
 		{
 			errorCondition = Request::ErrorGeneric;
