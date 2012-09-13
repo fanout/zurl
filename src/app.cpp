@@ -46,6 +46,7 @@ public:
 
 	App *q;
 	bool verbose;
+	QTime qtime;
 	JDnsShared *dns;
 	QZmq::Socket *in_sock;
 	QZmq::Socket *out_sock;
@@ -66,6 +67,7 @@ public:
 		in_req_sock(0),
 		workers(0)
 	{
+		qtime.start();
 	}
 
 	void log(int level, const char *fmt, va_list ap) const
@@ -85,7 +87,9 @@ public:
 					lstr = "INFO"; break;
 			}
 
-			fprintf(stderr, "[%s] %s\n", lstr, qPrintable(str));
+			QTime t(0, 0);
+			t = t.addMSecs(qtime.elapsed());
+			fprintf(stderr, "[%s] %s %s\n", lstr, qPrintable(t.toString("HH:mm:ss.zzz")), qPrintable(str));
 		}
 	}
 
