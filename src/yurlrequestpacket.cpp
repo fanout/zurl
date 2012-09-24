@@ -1,14 +1,18 @@
-#include "requestpacket.h"
+#include "yurlrequestpacket.h"
 
 #include "tnetstring.h"
 
-RequestPacket::RequestPacket() :
+YurlRequestPacket::YurlRequestPacket() :
+	seq(0),
+	cancel(false),
+	more(false),
 	stream(false),
-	maxSize(-1)
+	maxSize(-1),
+	credits(-1)
 {
 }
 
-bool RequestPacket::fromVariant(const QVariant &in)
+bool YurlRequestPacket::fromVariant(const QVariant &in)
 {
 	if(in.type() != QVariant::Hash)
 		return false;
@@ -83,6 +87,15 @@ bool RequestPacket::fromVariant(const QVariant &in)
 	}
 
 	userData = obj["user-data"];
+
+	credits = -1;
+	if(obj.contains("credits"))
+	{
+		if(obj["credits"].type() != QVariant::Int)
+			return false;
+
+		credits = obj["credits"].toInt();
+	}
 
 	return true;
 }

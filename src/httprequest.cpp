@@ -1,4 +1,4 @@
-#include "request.h"
+#include "httprequest.h"
 
 #include <stdio.h>
 #include <QUrl>
@@ -8,21 +8,93 @@
 #include <QtCrypto>
 #include "jdnsshared.h"
 
-class Request::Private : public QObject
+class HttpRequest::ReqBodyDevice : public QIODevice
 {
 	Q_OBJECT
 
 public:
-	Request *q;
+	QByteArray buf;
+	bool finished;
+
+	ReqBodyDevice(QObject *parent = 0) :
+		QIODevice(parent),
+		finished(false)
+	{
+	}
+
+	void append(const QByteArray &in)
+	{
+		buf += in;
+
+		QMetaObject::invokeMethod(this, "readyRead", Qt::QueuedConnection);
+	}
+
+	void end()
+	{
+		finished = true;
+
+		QMetaObject::invokeMethod(this, "readChannelFinished", Qt::QueuedConnection);
+	}
+
+	// reimplemented
+	virtual bool open(OpenMode mode)
+	{
+		return QIODevice::open(mode);
+	}
+
+	// reimplemented
+	virtual bool isSequential() const
+	{
+		return true;
+	}
+
+	// reimplemented
+	virtual bool atEnd() const
+	{
+		return (finished && buf.isEmpty());
+	}
+
+	// reimplemented
+	virtual qint64 	bytesAvailable() const
+	{
+		return buf.size();
+	}
+
+protected:
+	// reimplemented
+	virtual qint64 readData(char *data, qint64 maxSize)
+	{
+		qint64 size = qMin((qint64)buf.size(), maxSize);
+		memcpy(data, buf.data(), size);
+		buf = buf.mid(size);
+		return size;
+	}
+
+	// reimplemented
+	virtual qint64 writeData(const char *data, qint64 maxSize)
+	{
+		Q_UNUSED(data);
+		Q_UNUSED(maxSize);
+
+		return -1;
+	}
+};
+
+class HttpRequest::Private : public QObject
+{
+	Q_OBJECT
+
+public:
+	HttpRequest *q;
 	JDnsShared *dns;
 	int maxResponseSize;
 	QString connectHost;
-	Request::ErrorCondition errorCondition;
+	HttpRequest::ErrorCondition errorCondition;
 	QNetworkAccessManager *nam;
 	QString method;
 	QUrl url;
-	QList<Request::Header> headers;
-	QByteArray outbuf;
+	HttpHeaders headers;
+	ReqBodyDevice *outdev;
 	QString host;
 	QList<QHostAddress> addrs;
 	QNetworkReply *reply;
@@ -30,11 +102,12 @@ public:
 	int bytesReceived;
 	bool stopping;
 
-	Private(Request *_q, JDnsShared *_dns) :
+	Private(HttpRequest *_q, JDnsShared *_dns) :
 		QObject(_q),
 		q(_q),
 		dns(_dns),
 		maxResponseSize(-1),
+		outdev(0),
 		reply(0),
 		bytesReceived(0),
 		stopping(false)
@@ -51,16 +124,21 @@ public:
 			reply->deleteLater();
 		}
 
+		if(outdev)
+		{
+			outdev->setParent(0);
+			outdev->deleteLater();
+		}
+
 		nam->setParent(0);
 		nam->deleteLater();
 	}
 
-	void start(const QString &_method, const QUrl &_url, const QList<Request::Header> &_headers, const QByteArray &body)
+	void start(const QString &_method, const QUrl &_url, const HttpHeaders &_headers)
 	{
 		method = _method;
 		url = _url;
 		headers = _headers;
-		outbuf = body;
 
 		if(!connectHost.isEmpty())
 			host = connectHost;
@@ -86,13 +164,23 @@ public:
 		stopping = true;
 	}
 
+	void writeBody(const QByteArray &body)
+	{
+		outdev->append(body);
+	}
+
+	void endBody()
+	{
+		outdev->end();
+	}
+
 private slots:
 	void tryNextAddress()
 	{
 		if(addrs.isEmpty())
 		{
 			// note: this will never happen within start()
-			errorCondition = Request::ErrorConnect;
+			errorCondition = HttpRequest::ErrorConnect;
 			emit q->error();
 			return;
 		}
@@ -109,24 +197,26 @@ private slots:
 		request.setUrl(tmpUrl);
 		request.setRawHeader("Host", url.host().toUtf8());
 
-		foreach(const Request::Header &h, headers)
+		foreach(const HttpHeader &h, headers)
 			request.setRawHeader(h.first, h.second);
+
+		outdev = new ReqBodyDevice(this);
 
 		if(method == "HEAD")
 			reply = nam->head(request);
 		else if(method == "GET")
 			reply = nam->get(request);
 		else if(method == "POST")
-			reply = nam->post(request, outbuf);
+			reply = nam->post(request, outdev);
 		else if(method == "PUT")
-			reply = nam->put(request, outbuf);
+			reply = nam->put(request, outdev);
 		else if(method == "DELETE")
 			reply = nam->deleteResource(request);
 		else if(method == "OPTIONS")
 			reply = nam->sendCustomRequest(request, "OPTIONS");
 		else
 		{
-			errorCondition = Request::ErrorGeneric;
+			errorCondition = HttpRequest::ErrorGeneric;
 			QMetaObject::invokeMethod(q, "error", Qt::QueuedConnection);
 			return;
 		}
@@ -157,7 +247,7 @@ private slots:
 		else
 		{
 			delete dreq;
-			errorCondition = Request::ErrorConnect;
+			errorCondition = HttpRequest::ErrorConnect;
 			emit q->error();
 		}
 	}
@@ -167,7 +257,7 @@ private slots:
 		QByteArray buf = reply->readAll();
 		if(maxResponseSize != -1 && bytesReceived + buf.size() > maxResponseSize)
 		{
-			errorCondition = Request::ErrorMaxSizeExceeded;
+			errorCondition = HttpRequest::ErrorMaxSizeExceeded;
 			emit q->error();
 			return;
 		}
@@ -193,13 +283,13 @@ private slots:
 		}
 
 		if(code == QNetworkReply::ConnectionRefusedError)
-			errorCondition = Request::ErrorConnect;
+			errorCondition = HttpRequest::ErrorConnect;
 		else if(code == QNetworkReply::SslHandshakeFailedError)
-			errorCondition = Request::ErrorTls;
+			errorCondition = HttpRequest::ErrorTls;
 		else if(code == QNetworkReply::TimeoutError)
-			errorCondition = Request::ErrorTimeout;
+			errorCondition = HttpRequest::ErrorTimeout;
 		else
-			errorCondition = Request::ErrorGeneric;
+			errorCondition = HttpRequest::ErrorGeneric;
 
 		emit q->error();
 	}
@@ -218,38 +308,48 @@ private slots:
 	}
 };
 
-Request::Request(JDnsShared *dns, QObject *parent) :
+HttpRequest::HttpRequest(JDnsShared *dns, QObject *parent) :
 	QObject(parent)
 {
 	d = new Private(this, dns);
 }
 
-Request::~Request()
+HttpRequest::~HttpRequest()
 {
 	delete d;
 }
 
-void Request::setMaximumResponseSize(int size)
+void HttpRequest::setMaximumResponseSize(int size)
 {
 	d->maxResponseSize = size;
 }
 
-void Request::setConnectHost(const QString &host)
+void HttpRequest::setConnectHost(const QString &host)
 {
 	d->connectHost = host;
 }
 
-void Request::start(const QString &method, const QUrl &url, const QList<Header> &headers, const QByteArray &body)
+void HttpRequest::start(const QString &method, const QUrl &url, const HttpHeaders &headers)
 {
-	d->start(method, url, headers, body);
+	d->start(method, url, headers);
 }
 
-void Request::stop()
+void HttpRequest::stop()
 {
 	d->stop();
 }
 
-bool Request::isFinished() const
+void HttpRequest::writeBody(const QByteArray &body)
+{
+	d->writeBody(body);
+}
+
+void HttpRequest::endBody()
+{
+	d->endBody();
+}
+
+bool HttpRequest::isFinished() const
 {
 	if(d->reply)
 		return d->reply->isFinished();
@@ -257,12 +357,12 @@ bool Request::isFinished() const
 		return false;
 }
 
-Request::ErrorCondition Request::errorCondition() const
+HttpRequest::ErrorCondition HttpRequest::errorCondition() const
 {
 	return d->errorCondition;
 }
 
-int Request::responseCode() const
+int HttpRequest::responseCode() const
 {
 	if(d->reply)
 		return d->reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
@@ -270,7 +370,7 @@ int Request::responseCode() const
 		return -1;
 }
 
-QByteArray Request::responseStatus() const
+QByteArray HttpRequest::responseStatus() const
 {
 	if(d->reply)
 		return d->reply->attribute(QNetworkRequest::HttpReasonPhraseAttribute).toByteArray();
@@ -278,19 +378,25 @@ QByteArray Request::responseStatus() const
 		return QByteArray();
 }
 
-QList<Request::Header> Request::responseHeaders() const
+HttpHeaders HttpRequest::responseHeaders() const
 {
 	if(d->reply)
-		return d->reply->rawHeaderPairs();
+	{
+		HttpHeaders out;
+		QList< QPair<QByteArray, QByteArray> > headerPairs = d->reply->rawHeaderPairs();
+		for(int n = 0; n < headerPairs.count(); ++n)
+			out += HttpHeader(headerPairs[n].first, headerPairs[n].second);
+		return out;
+	}
 	else
-		return QList<Header>();
+		return HttpHeaders();
 }
 
-QByteArray Request::readResponseBody()
+QByteArray HttpRequest::readResponseBody()
 {
 	QByteArray out = d->inbuf;
 	d->inbuf.clear();
 	return out;
 }
 
-#include "request.moc"
+#include "httprequest.moc"

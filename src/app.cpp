@@ -9,12 +9,11 @@
 #include <QtCrypto>
 #include "jdnsshared.h"
 #include "qzmqsocket.h"
-#include "qzmqreprouter.h"
 #include "qzmqreqmessage.h"
-#include "request.h"
-#include "requestpacket.h"
-#include "responsepacket.h"
+#include "qzmqvalve.h"
 #include "tnetstring.h"
+#include "appconfig.h"
+#include "worker.h"
 
 #define VERSION "1.0"
 
@@ -23,49 +22,31 @@ class App::Private : public QObject
 	Q_OBJECT
 
 public:
-	class RequestState
-	{
-	public:
-		QByteArray receiver;
-		bool reqSource;
-		QList<QByteArray> reqHeaders; // if reqSource is true
-		QByteArray id;
-		int seq;
-		bool streaming;
-		bool sentHeader;
-		QVariant userData;
-
-		RequestState() :
-			reqSource(false),
-			seq(0),
-			streaming(false),
-			sentHeader(false)
-		{
-		}
-	};
-
 	App *q;
 	bool verbose;
 	QTime qtime;
 	JDnsShared *dns;
 	QZmq::Socket *in_sock;
+	QZmq::Socket *in_stream_sock;
 	QZmq::Socket *out_sock;
-	QZmq::RepRouter *in_req_sock;
-	QString defaultPolicy;
-	QStringList allowExps, denyExps;
-	QHash<Request*, RequestState*> requestStateByRequest;
-	int workers;
-	int maxWorkers;
-	QList<bool> pendingWrites, reqPendingWrites;
+	QZmq::Socket *in_req_sock;
+	QZmq::Valve *in_valve;
+	QZmq::Valve *in_req_valve;
+	AppConfig config;
+	QSet<Worker*> workers;
+	QHash<QByteArray, Worker*> streamWorkersById;
+	QHash<Worker*, QList<QByteArray> > reqHeadersByWorker;
 
 	Private(App *_q) :
 		QObject(_q),
 		q(_q),
 		verbose(false),
 		in_sock(0),
+		in_stream_sock(0),
 		out_sock(0),
 		in_req_sock(0),
-		workers(0)
+		in_valve(0),
+		in_req_valve(0)
 	{
 		qtime.start();
 	}
@@ -186,41 +167,35 @@ public:
 		QSettings settings(configFile, QSettings::IniFormat);
 
 		QString in_url = settings.value("in_spec").toString();
+		QString in_stream_url = settings.value("in_stream_spec").toString();
 		QString out_url = settings.value("out_spec").toString();
 		QString in_req_url = settings.value("in_req_spec").toString();
-		maxWorkers = settings.value("max_open_requests", -1).toInt();
+		config.maxWorkers = settings.value("max_open_requests", -1).toInt();
 
-		if(!in_url.isEmpty() && out_url.isEmpty())
+		if((!in_url.isEmpty() || !in_stream_url.isEmpty() || !out_url.isEmpty()) && (in_url.isEmpty() || in_stream_url.isEmpty() || out_url.isEmpty()))
 		{
-			log_error("in_spec set but not out_spec");
-			emit q->quit();
-			return;
-		}
-
-		if(in_url.isEmpty() && !out_url.isEmpty())
-		{
-			log_error("out_spec set but not in_spec");
+			log_error("if any of in_spec, in_stream_spec, or out_spec are set then all of them must be set");
 			emit q->quit();
 			return;
 		}
 
 		if(in_url.isEmpty() && in_req_url.isEmpty())
 		{
-			log_error("must set at least in_spec+out_spec or in_req_spec");
+			log_error("must set at least in_spec+in_stream_spec+out_spec or in_req_spec");
 			emit q->quit();
 			return;
 		}
 
-		defaultPolicy = settings.value("defpolicy").toString();
-		if(defaultPolicy != "allow" && defaultPolicy != "deny")
+		config.defaultPolicy = settings.value("defpolicy").toString();
+		if(config.defaultPolicy != "allow" && config.defaultPolicy != "deny")
 		{
 			log_error("must set defpolicy to either \"allow\" or \"deny\"");
 			emit q->quit();
 			return;
 		}
 
-		allowExps = settings.value("allow").toStringList();
-		denyExps = settings.value("deny").toStringList();
+		config.allowExps = settings.value("allow").toStringList();
+		config.denyExps = settings.value("deny").toStringList();
 
 		dns = new JDnsShared(JDnsShared::UnicastInternet, this);
 		dns->addInterface(QHostAddress::Any);
@@ -229,217 +204,79 @@ public:
 		if(!in_url.isEmpty())
 		{
 			in_sock = new QZmq::Socket(QZmq::Socket::Pull, this);
-			connect(in_sock, SIGNAL(readyRead()), SLOT(in_readyRead()));
-			in_sock->bind(in_url);
+			if(!in_sock->bind(in_url))
+			{
+				log_error("unable to bind to in_spec: %s", qPrintable(in_url));
+				emit q->quit();
+				return;
+			}
+
+			in_valve = new QZmq::Valve(in_sock, this);
+			connect(in_valve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(in_readyRead(const QList<QByteArray> &)));
+		}
+
+		if(!in_stream_url.isEmpty())
+		{
+			in_stream_sock = new QZmq::Socket(QZmq::Socket::Router, this);
+			connect(in_stream_sock, SIGNAL(readyRead()), SLOT(in_stream_readyRead()));
+			if(!in_stream_sock->bind(in_stream_url))
+			{
+				log_error("unable to bind to in_stream_spec: %s", qPrintable(in_stream_url));
+				emit q->quit();
+				return;
+			}
 		}
 
 		if(!out_url.isEmpty())
 		{
 			out_sock = new QZmq::Socket(QZmq::Socket::Pub, this);
-			connect(out_sock, SIGNAL(messagesWritten(int)), SLOT(out_messagesWritten(int)));
-			out_sock->bind(out_url);
+			if(!out_sock->bind(out_url))
+			{
+				log_error("unable to bind to out_spec: %s", qPrintable(out_url));
+				emit q->quit();
+				return;
+			}
 		}
 
 		if(!in_req_url.isEmpty())
 		{
-			in_req_sock = new QZmq::RepRouter(this);
-			connect(in_req_sock, SIGNAL(readyRead()), SLOT(in_req_readyRead()));
-			connect(in_req_sock, SIGNAL(messagesWritten(int)), SLOT(in_req_messagesWritten(int)));
-			in_req_sock->bind(in_req_url);
+			in_req_sock = new QZmq::Socket(QZmq::Socket::Router, this);
+			if(!in_req_sock->bind(in_req_url))
+			{
+				log_error("unable to bind to in_req_spec: %s", qPrintable(in_req_url));
+				emit q->quit();
+				return;
+			}
+
+			in_req_valve = new QZmq::Valve(in_req_sock, this);
+			connect(in_req_valve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(in_req_readyRead(const QList<QByteArray> &)));
 		}
+
+		if(in_valve)
+			in_valve->open();
+		if(in_req_valve)
+			in_req_valve->open();
 
 		log_info("started");
 	}
 
-	static bool matchExp(const QString &exp, const QString &s)
-	{
-		int at = exp.indexOf('*');
-		if(at != -1)
-		{
-			QString start = exp.mid(0, at);
-			QString end = exp.mid(at + 1);
-			return (s.startsWith(start, Qt::CaseInsensitive) && s.endsWith(end, Qt::CaseInsensitive));
-		}
-		else
-			return s.compare(exp, Qt::CaseInsensitive);
-	}
-
-	bool checkAllow(const QString &in) const
-	{
-		foreach(const QString &exp, allowExps)
-		{
-			if(matchExp(exp, in))
-				return true;
-		}
-
-		return false;
-	}
-
-	bool checkDeny(const QString &in) const
-	{
-		foreach(const QString &exp, denyExps)
-		{
-			if(matchExp(exp, in))
-				return true;
-		}
-
-		return false;
-	}
-
-	bool isAllowed(const QString &in) const
-	{
-		if(defaultPolicy == "allow")
-			return !checkDeny(in) || checkAllow(in);
-		else
-			return checkAllow(in) && !checkDeny(in);
-	}
-
-	// receiver non-empty on push interface, empty on req interface
-	void setupRequest(const QZmq::ReqMessage &msg, const QByteArray &receiver, const QVariant &data)
-	{
-		RequestPacket p;
-		if(!p.fromVariant(data))
-		{
-			log_warning("received message with invalid format (bad/missing fields), skipping");
-			return;
-		}
-
-		RequestState *state = new RequestState;
-
-		state->id = p.id;
-		state->seq = 0;
-		state->userData = p.userData;
-
-		if(!receiver.isEmpty())
-		{
-			state->receiver = receiver;
-			state->streaming = p.stream; // streaming only allowed on push interface
-		}
-		else
-		{
-			state->reqSource = true;
-			state->reqHeaders = msg.headers();
-		}
-
-		++workers;
-
-		log_info("IN wc=%d id=%s, %s %s", workers, p.id.data(), qPrintable(p.method), qPrintable(p.url.toString()));
-
-		if(!isAllowed(p.url.host()) || (!p.connectHost.isEmpty() && !isAllowed(p.connectHost)))
-		{
-			ResponsePacket resp;
-			resp.id = state->id;
-			resp.seq = (state->seq)++;
-			resp.isError = true;
-			resp.condition = "policy-violation";
-			resp.userData = state->userData;
-			writeResponse(state, resp);
-			delete state;
-			return;
-		}
-
-		Request *req = new Request(dns, this);
-		connect(req, SIGNAL(nextAddress(const QHostAddress &)), SLOT(req_nextAddress(const QHostAddress &)));
-		connect(req, SIGNAL(readyRead()), SLOT(req_readyRead()));
-		connect(req, SIGNAL(error()), SLOT(req_error()));
-		if(p.maxSize != -1)
-			req->setMaximumResponseSize(p.maxSize);
-		if(!p.connectHost.isEmpty())
-			req->setConnectHost(p.connectHost);
-
-		requestStateByRequest.insert(req, state);
-		req->start(p.method, p.url, p.headers, p.body);
-	}
-
-	void writeResponse(RequestState *state, const ResponsePacket &p)
-	{
-		bool significantWrite = false;
-		if(p.isError || p.isLast)
-			significantWrite = true;
-
-		if(p.isError)
-		{
-			log_info("OUT ERR id=%s condition=%s", p.id.data(), p.condition.data());
-		}
-		else
-		{
-			if(p.code != -1)
-				log_info("OUT id=%s code=%d %d%s", p.id.data(), p.code, p.body.size(), p.isLast ? " L" : "");
-			else
-				log_info("OUT id=%s %d%s", p.id.data(), p.body.size(), p.isLast ? " L" : "");
-		}
-
-		QByteArray msg = p.toByteArray();
-
-		if(state->reqSource)
-		{
-			reqPendingWrites += significantWrite;
-			in_req_sock->write(QZmq::ReqMessage(state->reqHeaders, QList<QByteArray>() << msg).toRawMessage());
-		}
-		else
-		{
-			pendingWrites += significantWrite;
-			out_sock->write(QList<QByteArray>() << (state->receiver + ' ' + msg));
-		}
-	}
-
-	void destroyReq(Request *req)
-	{
-		req->disconnect(this);
-		req->setParent(0);
-		req->stop();
-		req->deleteLater();
-	}
-
-	void handleWritten(QList<bool> *queue, int count)
-	{
-		bool needRead = false;
-
-		for(int n = 0; n < count; ++n)
-		{
-			bool significantWrite = queue->takeFirst();
-			if(significantWrite)
-			{
-				--workers;
-				if((in_sock && in_sock->canRead()) || (in_req_sock && in_req_sock->canRead()))
-					needRead = true;
-			}
-		}
-
-		if(needRead)
-			QMetaObject::invokeMethod(this, "tryReads", Qt::QueuedConnection);
-	}
-
 private slots:
-	void tryReads()
+	void in_readyRead(const QList<QByteArray> &message)
 	{
-		if(in_sock && in_sock->canRead())
-			in_readyRead();
-
-		if(in_req_sock && in_req_sock->canRead())
-			in_req_readyRead();
-	}
-
-	void in_readyRead()
-	{
-		if(maxWorkers != -1 && workers >= maxWorkers)
-			return;
-
-		QList<QByteArray> msg = in_sock->read();
-		if(msg.count() != 1)
+		if(message.count() != 1)
 		{
 			log_warning("received message with parts != 1, skipping");
 			return;
 		}
 
-		int at = msg[0].indexOf(' ');
+		int at = message[0].indexOf(' ');
 		if(at == -1)
 		{
 			log_warning("received message with invalid format (missing receiver), skipping");
 			return;
 		}
 
-		QByteArray receiver = msg[0].mid(0, at);
+		QByteArray receiver = message[0].mid(0, at);
 		if(receiver.isEmpty())
 		{
 			log_warning("received message with invalid format (receiver empty), skipping");
@@ -447,27 +284,48 @@ private slots:
 		}
 
 		bool ok;
-		QVariant data = TnetString::toVariant(msg[0], at + 1, &ok);
+		QVariant data = TnetString::toVariant(message[0], at + 1, &ok);
 		if(!ok)
 		{
 			log_warning("received message with invalid format (tnetstring parse failed), skipping");
 			return;
 		}
 
-		setupRequest(QZmq::ReqMessage(), receiver, data);
+		Worker *w = new Worker(dns, &config, this);
+		connect(w, SIGNAL(readyRead(const QByteArray &, const QVariant &)), SLOT(worker_readyRead(const QByteArray &, const QVariant &)));
+		connect(w, SIGNAL(finished()), SLOT(worker_finished()));
+
+		workers += w;
+		streamWorkersById[w->id()] = w;
+
+		if(workers.count() >= config.maxWorkers)
+		{
+			in_valve->close();
+
+			// also close in_req_valve, if we have it
+			if(in_req_valve)
+				in_req_valve->close();
+		}
+
+		w->start(receiver, data, Worker::Stream);
 	}
 
-	void out_messagesWritten(int count)
+	void in_stream_readyRead()
 	{
-		handleWritten(&pendingWrites, count);
-	}
-
-	void in_req_readyRead()
-	{
-		if(maxWorkers != -1 && workers >= maxWorkers)
+		QZmq::ReqMessage reqMessage(in_stream_sock->read());
+		if(reqMessage.headers().isEmpty())
+		{
+			log_warning("received message with no routing id, skipping");
 			return;
+		}
 
-		QZmq::ReqMessage reqMessage(in_req_sock->read());
+		Worker *w = streamWorkersById.value(reqMessage.headers()[0]);
+		if(!w)
+		{
+			log_warning("received message with unknown routing id, skipping");
+			return;
+		}
+
 		if(reqMessage.content().count() != 1)
 		{
 			log_warning("received message with parts != 1, skipping");
@@ -482,108 +340,76 @@ private slots:
 			return;
 		}
 
-		setupRequest(reqMessage, QByteArray(), data);
+		w->write(data);
 	}
 
-	void in_req_messagesWritten(int count)
+	void in_req_readyRead(const QList<QByteArray> &message)
 	{
-		handleWritten(&reqPendingWrites, count);
-	}
-
-	void req_nextAddress(const QHostAddress &addr)
-	{
-		Request *req = (Request *)sender();
-		RequestState *state = requestStateByRequest[req];
-		assert(state);
-
-		if(!isAllowed(addr.toString()))
+		QZmq::ReqMessage reqMessage(message);
+		if(reqMessage.content().count() != 1)
 		{
-			ResponsePacket resp;
-			resp.id = state->id;
-			resp.seq = (state->seq)++;
-			resp.isError = true;
-			resp.condition = "policy-violation";
-			resp.userData = state->userData;
-			writeResponse(state, resp);
-
-			requestStateByRequest.remove(req);
-			delete state;
-
-			destroyReq(req);
-		}
-	}
-
-	void req_readyRead()
-	{
-		Request *req = (Request *)sender();
-		RequestState *state = requestStateByRequest[req];
-		assert(state);
-
-		if(!state->streaming && !req->isFinished())
+			log_warning("received message with parts != 1, skipping");
 			return;
-
-		ResponsePacket p;
-
-		p.id = state->id;
-		p.seq = (state->seq)++;
-		p.isLast = req->isFinished();
-
-		if(state->reqSource)
-			assert(p.isLast);
-
-		if(!state->sentHeader)
-		{
-			p.code = req->responseCode();
-			p.status = req->responseStatus();
-			p.headers = req->responseHeaders();
-			state->sentHeader = true;
 		}
 
-		p.body = req->readResponseBody();
-
-		p.userData = state->userData;
-
-		writeResponse(state, p);
-
-		if(req->isFinished())
+		bool ok;
+		QVariant data = TnetString::toVariant(reqMessage.content()[0], 0, &ok);
+		if(!ok)
 		{
-			requestStateByRequest.remove(req);
-			delete state;
+			log_warning("received message with invalid format (tnetstring parse failed), skipping");
+			return;
+		}
 
-			destroyReq(req);
+		Worker *w = new Worker(dns, &config, this);
+		connect(w, SIGNAL(readyRead(const QByteArray &, const QVariant &)), SLOT(worker_readyRead(const QByteArray &, const QVariant &)));
+		connect(w, SIGNAL(finished()), SLOT(worker_finished()));
+
+		workers += w;
+		reqHeadersByWorker[w] = reqMessage.headers();
+
+		if(workers.count() >= config.maxWorkers)
+		{
+			in_req_valve->close();
+
+			// also close in_valve, if we have it
+			if(in_valve)
+				in_valve->close();
+		}
+
+		w->start(QByteArray(), data, Worker::Single);
+	}
+
+	void worker_readyRead(const QByteArray &receiver, const QVariant &response)
+	{
+		Worker *w = (Worker *)sender();
+
+		QByteArray part = TnetString::fromVariant(response);
+		if(!receiver.isEmpty())
+		{
+			out_sock->write(QList<QByteArray>() << (receiver + ' ' + part));
+		}
+		else
+		{
+			assert(reqHeadersByWorker.contains(w));
+			out_sock->write(QZmq::ReqMessage(reqHeadersByWorker.value(w), QList<QByteArray>() << part).toRawMessage());
 		}
 	}
 
-	void req_error()
+	void worker_finished()
 	{
-		Request *req = (Request *)sender();
-		RequestState *state = requestStateByRequest[req];
-		assert(state);
+		Worker *w = (Worker *)sender();
 
-		ResponsePacket p;
-		p.id = state->id;
-		p.seq = (state->seq)++;
-		p.isError = true;
-		switch(req->errorCondition())
-		{
-			case Request::ErrorPolicy:          p.condition = "policy-violation"; break;
-			case Request::ErrorConnect:         p.condition = "remote-connection-failed"; break;
-			case Request::ErrorTls:             p.condition = "tls-error"; break;
-			case Request::ErrorTimeout:         p.condition = "connection-timeout"; break;
-			case Request::ErrorMaxSizeExceeded: p.condition = "max-size-exceeded"; break;
-			case Request::ErrorGeneric:
-			default:
-				p.condition = "undefined-condition";
-				break;
-		}
+		streamWorkersById.remove(w->id());
+		reqHeadersByWorker.remove(w);
+		workers.remove(w);
 
-		p.userData = state->userData;
-		writeResponse(state, p);
+		delete w;
 
-		requestStateByRequest.remove(req);
-		delete state;
-
-		destroyReq(req);
+		// ensure the valves are open
+		if(in_valve)
+			in_valve->open();
+		if(in_req_valve)
+			in_req_valve->open();
 	}
 };
 

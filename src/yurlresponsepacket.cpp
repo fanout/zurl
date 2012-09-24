@@ -1,19 +1,17 @@
-#include "responsepacket.h"
+#include "yurlresponsepacket.h"
 
-#include "tnetstring.h"
-
-ResponsePacket::ResponsePacket() :
+YurlResponsePacket::YurlResponsePacket() :
 	isError(false),
-	isLast(false),
-	code(-1)
+	more(false),
+	code(-1),
+	credits(-1)
 {
 }
 
-QByteArray ResponsePacket::toByteArray() const
+QVariant YurlResponsePacket::toVariant() const
 {
 	QVariantHash obj;
 	obj["id"] = id;
-	obj["seq"] = seq;
 
 	if(isError)
 	{
@@ -22,15 +20,20 @@ QByteArray ResponsePacket::toByteArray() const
 	}
 	else
 	{
-		if(isLast)
-			obj["last"] = true;
+		obj["seq"] = seq;
+
+		if(more)
+			obj["more"] = true;
+
+		if(!replyAddress.isEmpty())
+			obj["reply-address"] = replyAddress;
 
 		if(code != -1)
 		{
 			obj["code"] = code;
 			obj["status"] = status;
 			QVariantList vheaders;
-			foreach(const Request::Header &h, headers)
+			foreach(const HttpHeader &h, headers)
 			{
 				QVariantList vheader;
 				vheader += h.first;
@@ -40,11 +43,15 @@ QByteArray ResponsePacket::toByteArray() const
 			obj["headers"] = vheaders;
 		}
 
-		obj["body"] = body;
+		if(!body.isNull())
+			obj["body"] = body;
+
+		if(credits != -1)
+			obj["credits"] = credits;
 	}
 
 	if(userData.isValid())
 		obj["user-data"] = userData;
 
-	return TnetString::fromVariant(obj);
+	return obj;
 }

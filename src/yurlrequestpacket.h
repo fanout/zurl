@@ -1,25 +1,29 @@
-#ifndef REQUESTPACKET_H
-#define REQUESTPACKET_H
+#ifndef YURLREQUESTPACKET_H
+#define YURLREQUESTPACKET_H
 
 #include <QUrl>
 #include <QVariant>
-#include "request.h"
+#include "httpheaders.h"
 
-class RequestPacket
+class YurlRequestPacket
 {
 public:
 	QByteArray id;
+	int seq;
 
+	bool cancel;
+	bool more;
 	QString method;
 	QUrl url;
-	QList<Request::Header> headers;
+	HttpHeaders headers;
 	QByteArray body;
 	bool stream;
 	int maxSize;
 	QString connectHost;
 	QVariant userData;
+	int credits;
 
-	RequestPacket();
+	YurlRequestPacket();
 
 	bool fromVariant(const QVariant &in);
 };
