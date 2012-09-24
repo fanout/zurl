@@ -726,7 +726,7 @@ error:
 static int append_rrsection(const jdns_list_t *src, int at, int left, unsigned char **bufp, jdns_list_t *lookup)
 {
 	unsigned char *buf, *start, *last, *rdlengthp;
-	int n, i, rdlength;
+	int n, i;
 
 	buf = *bufp;
 	start = buf - at;
@@ -750,7 +750,6 @@ static int append_rrsection(const jdns_list_t *src, int at, int left, unsigned c
 		buf += 2;
 
 		// play write log
-		rdlength = 0;
 		for(i = 0; i < r->writelog->count; ++i)
 		{
 			jdns_packet_write_t *write = (jdns_packet_write_t *)r->writelog->item[i];
