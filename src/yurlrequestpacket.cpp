@@ -50,15 +50,6 @@ bool YurlRequestPacket::fromVariant(const QVariant &in)
 		cancel = obj["cancel"].toBool();
 	}
 
-	more = false;
-	if(obj.contains("more"))
-	{
-		if(obj["more"].type() != QVariant::Bool)
-			return false;
-
-		more = obj["more"].toBool();
-	}
-
 	method.clear();
 	if(obj.contains("method"))
 	{
@@ -104,6 +95,15 @@ bool YurlRequestPacket::fromVariant(const QVariant &in)
 			return false;
 
 		body = obj["body"].toByteArray();
+	}
+
+	more = false;
+	if(obj.contains("more"))
+	{
+		if(obj["more"].type() != QVariant::Bool)
+			return false;
+
+		more = obj["more"].toBool();
 	}
 
 	stream = false;

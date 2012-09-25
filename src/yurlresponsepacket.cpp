@@ -2,8 +2,8 @@
 
 YurlResponsePacket::YurlResponsePacket() :
 	isError(false),
-	more(false),
 	code(-1),
+	more(false),
 	credits(-1)
 {
 }
@@ -21,9 +21,6 @@ QVariant YurlResponsePacket::toVariant() const
 	else
 	{
 		obj["seq"] = seq;
-
-		if(more)
-			obj["more"] = true;
 
 		if(!replyAddress.isEmpty())
 			obj["reply-address"] = replyAddress;
@@ -45,6 +42,9 @@ QVariant YurlResponsePacket::toVariant() const
 
 		if(!body.isNull())
 			obj["body"] = body;
+
+		if(more)
+			obj["more"] = true;
 
 		if(credits != -1)
 			obj["credits"] = credits;

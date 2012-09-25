@@ -13,12 +13,12 @@ public:
 	bool isError;
 	QByteArray condition;
 
-	bool more;
 	QByteArray replyAddress;
 	int code;
 	QByteArray status;
 	HttpHeaders headers;
 	QByteArray body;
+	bool more;
 	QVariant userData;
 	int credits;
 

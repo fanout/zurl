@@ -13,11 +13,11 @@ public:
 	int seq;
 
 	bool cancel;
-	bool more;
 	QString method;
 	QUrl url;
 	HttpHeaders headers;
 	QByteArray body;
+	bool more;
 	bool stream;
 	int maxSize;
 	QString connectHost;
