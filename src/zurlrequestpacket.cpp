@@ -1,8 +1,8 @@
-#include "yurlrequestpacket.h"
+#include "zurlrequestpacket.h"
 
 #include "tnetstring.h"
 
-YurlRequestPacket::YurlRequestPacket() :
+ZurlRequestPacket::ZurlRequestPacket() :
 	seq(0),
 	cancel(false),
 	more(false),
@@ -12,7 +12,7 @@ YurlRequestPacket::YurlRequestPacket() :
 {
 }
 
-bool YurlRequestPacket::fromVariant(const QVariant &in)
+bool ZurlRequestPacket::fromVariant(const QVariant &in)
 {
 	if(in.type() != QVariant::Hash)
 		return false;

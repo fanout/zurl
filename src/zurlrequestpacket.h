@@ -1,11 +1,11 @@
-#ifndef YURLREQUESTPACKET_H
-#define YURLREQUESTPACKET_H
+#ifndef ZURLREQUESTPACKET_H
+#define ZURLREQUESTPACKET_H
 
 #include <QUrl>
 #include <QVariant>
 #include "httpheaders.h"
 
-class YurlRequestPacket
+class ZurlRequestPacket
 {
 public:
 	QByteArray id;
@@ -24,7 +24,7 @@ public:
 	QVariant userData;
 	int credits;
 
-	YurlRequestPacket();
+	ZurlRequestPacket();
 
 	bool fromVariant(const QVariant &in);
 };

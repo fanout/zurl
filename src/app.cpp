@@ -12,7 +12,7 @@
 #include "qzmqreqmessage.h"
 #include "qzmqvalve.h"
 #include "tnetstring.h"
-#include "yurlresponsepacket.h"
+#include "zurlresponsepacket.h"
 #include "appconfig.h"
 #include "log.h"
 #include "worker.h"
@@ -92,7 +92,7 @@ public:
 
 		if(options.contains("version"))
 		{
-			printf("Yurl %s\n", VERSION);
+			printf("Zurl %s\n", VERSION);
 			emit q->quit();
 			return;
 		}
@@ -104,7 +104,7 @@ public:
 
 		QString configFile = options["config"];
 		if(configFile.isEmpty())
-			configFile = "/etc/yurl.conf";
+			configFile = "/etc/zurl.conf";
 
 		// QSettings doesn't inform us if the config file doesn't exist, so do that ourselves
 		{
@@ -222,7 +222,7 @@ public:
 	//   cases we need to be able to respond with an error at this layer
 	void respondError(const QByteArray &receiver, const QByteArray &rid, const QByteArray &condition)
 	{
-		YurlResponsePacket out;
+		ZurlResponsePacket out;
 		out.id = rid;
 		out.isError = true;
 		out.condition = condition;

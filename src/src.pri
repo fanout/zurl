@@ -11,8 +11,8 @@ include(qzmq/src/src.pri)
 HEADERS += \
 	$$PWD/tnetstring.h \
 	$$PWD/httpheaders.h \
-	$$PWD/yurlrequestpacket.h \
-	$$PWD/yurlresponsepacket.h \
+	$$PWD/zurlrequestpacket.h \
+	$$PWD/zurlresponsepacket.h \
 	$$PWD/httprequest.h \
 	$$PWD/log.h \
 	$$PWD/appconfig.h \
@@ -22,8 +22,8 @@ HEADERS += \
 SOURCES += \
 	$$PWD/tnetstring.cpp \
 	$$PWD/httpheaders.cpp \
-	$$PWD/yurlrequestpacket.cpp \
-	$$PWD/yurlresponsepacket.cpp \
+	$$PWD/zurlrequestpacket.cpp \
+	$$PWD/zurlresponsepacket.cpp \
 	$$PWD/httprequest.cpp \
 	$$PWD/log.cpp \
 	$$PWD/worker.cpp \

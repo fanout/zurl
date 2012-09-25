@@ -1,10 +1,10 @@
-#ifndef YURLRESPONSEPACKET_H
-#define YURLRESPONSEPACKET_H
+#ifndef ZURLRESPONSEPACKET_H
+#define ZURLRESPONSEPACKET_H
 
 #include <QVariant>
 #include "httpheaders.h"
 
-class YurlResponsePacket
+class ZurlResponsePacket
 {
 public:
 	QByteArray id;
@@ -22,7 +22,7 @@ public:
 	QVariant userData;
 	int credits;
 
-	YurlResponsePacket();
+	ZurlResponsePacket();
 
 	QVariant toVariant() const;
 };

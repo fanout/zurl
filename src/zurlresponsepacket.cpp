@@ -1,6 +1,6 @@
-#include "yurlresponsepacket.h"
+#include "zurlresponsepacket.h"
 
-YurlResponsePacket::YurlResponsePacket() :
+ZurlResponsePacket::ZurlResponsePacket() :
 	isError(false),
 	code(-1),
 	more(false),
@@ -8,7 +8,7 @@ YurlResponsePacket::YurlResponsePacket() :
 {
 }
 
-QVariant YurlResponsePacket::toVariant() const
+QVariant ZurlResponsePacket::toVariant() const
 {
 	QVariantHash obj;
 	obj["id"] = id;

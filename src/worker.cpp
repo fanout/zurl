@@ -6,8 +6,8 @@
 #include <QPointer>
 #include "jdnsshared.h"
 #include "httprequest.h"
-#include "yurlrequestpacket.h"
-#include "yurlresponsepacket.h"
+#include "zurlrequestpacket.h"
+#include "zurlresponsepacket.h"
 #include "appconfig.h"
 #include "log.h"
 
@@ -71,7 +71,7 @@ public:
 		inSeq = 0;
 		outSeq = 0;
 
-		YurlRequestPacket request;
+		ZurlRequestPacket request;
 		if(!request.fromVariant(vrequest))
 		{
 			QVariantHash vhash = vrequest.toHash();
@@ -194,7 +194,7 @@ public:
 			else
 			{
 				// send cts
-				YurlResponsePacket resp;
+				ZurlResponsePacket resp;
 				resp.credits = IDEAL_CREDITS;
 				writeResponse(resp);
 			}
@@ -203,7 +203,7 @@ public:
 
 	void write(const QVariant &vrequest)
 	{
-		YurlRequestPacket request;
+		ZurlRequestPacket request;
 		if(!request.fromVariant(vrequest))
 		{
 			QVariantHash vhash = vrequest.toHash();
@@ -316,9 +316,9 @@ public:
 	}
 
 	// emits signals, but safe to delete after
-	void writeResponse(const YurlResponsePacket &resp)
+	void writeResponse(const ZurlResponsePacket &resp)
 	{
-		YurlResponsePacket out = resp;
+		ZurlResponsePacket out = resp;
 		out.id = rid;
 		if(!out.isError)
 			out.seq = outSeq++;
@@ -349,7 +349,7 @@ public:
 
 		stuffToRead = false;
 
-		YurlResponsePacket resp;
+		ZurlResponsePacket resp;
 
 		if(!sentHeader)
 		{
@@ -419,7 +419,7 @@ private slots:
 	{
 		QPointer<QObject> self = this;
 
-		YurlResponsePacket resp;
+		ZurlResponsePacket resp;
 		resp.isError = true;
 		resp.condition = condition;
 
@@ -473,7 +473,7 @@ private slots:
 
 	void req_bytesWritten(int count)
 	{
-		YurlResponsePacket resp;
+		ZurlResponsePacket resp;
 		resp.credits = count;
 		writeResponse(resp);
 	}
