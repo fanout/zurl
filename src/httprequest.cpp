@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <assert.h>
+#include <QPointer>
 #include <QUrl>
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>

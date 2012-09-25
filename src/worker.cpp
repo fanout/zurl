@@ -2,6 +2,8 @@
 
 #include <assert.h>
 #include <QVariant>
+#include <QTimer>
+#include <QPointer>
 #include "jdnsshared.h"
 #include "httprequest.h"
 #include "yurlrequestpacket.h"
@@ -9,6 +11,7 @@
 #include "appconfig.h"
 #include "log.h"
 
+#define SESSION_TIMEOUT 600
 #define IDEAL_CREDITS 200000
 
 class Worker::Private : public QObject
@@ -33,13 +36,15 @@ public:
 	bool stuffToRead;
 	QByteArray inbuf; // for single mode
 	int bytesReceived;
+	QTimer *timer;
 
 	Private(JDnsShared *_dns, AppConfig *_config, Worker *_q) :
 		QObject(_q),
 		q(_q),
 		dns(_dns),
 		config(_config),
-		hreq(0)
+		hreq(0),
+		timer(0)
 	{
 	}
 
@@ -51,6 +56,14 @@ public:
 	{
 		delete hreq;
 		hreq = 0;
+
+		if(timer)
+		{
+			timer->disconnect(this);
+			timer->setParent(0);
+			timer->deleteLater();
+			timer = 0;
+		}
 	}
 
 	void start(const QVariant &vrequest, Mode mode)
@@ -158,6 +171,11 @@ public:
 		if((request.method == "POST" || request.method == "PUT") && (!headers.contains("content-length") || !request.more))
 			headers += HttpHeader("Content-Length", QByteArray::number(request.body.size()));
 
+		timer = new QTimer(this);
+		connect(timer, SIGNAL(timeout()), SLOT(timer_timeout()));
+		timer->setSingleShot(true);
+		timer->start(SESSION_TIMEOUT * 1000);
+
 		hreq->start(request.method, request.url, headers);
 
 		// note: unlike follow-up requests, the initial request is assumed to have a body.
@@ -217,6 +235,8 @@ public:
 
 			return;
 		}
+
+		refreshTimeout();
 
 		inSeq = request.seq;
 
@@ -305,11 +325,13 @@ public:
 		out.replyAddress = config->clientId;
 		out.userData = userData;
 
+		// only log if error or body packet. this way we don't log cts or credits-only packets
+
 		if(out.isError)
 		{
 			log_info("OUT ERR id=%s condition=%s", out.id.data(), out.condition.data());
 		}
-		else
+		else if(!out.body.isNull())
 		{
 			if(resp.code != -1)
 				log_info("OUT id=%s code=%d %d%s", out.id.data(), out.code, out.body.size(), out.more ? " M" : "");
@@ -341,11 +363,11 @@ public:
 
 		if(outStream)
 		{
-			resp.body = hreq->readResponseBody(outCredits);
+			QByteArray buf = hreq->readResponseBody(outCredits);
 
-			if(!resp.body.isEmpty())
+			if(!buf.isEmpty())
 			{
-				if(maxResponseSize != -1 && bytesReceived + resp.body.size() > maxResponseSize)
+				if(maxResponseSize != -1 && bytesReceived + buf.size() > maxResponseSize)
 				{
 					YurlResponsePacket resp;
 					resp.isError = true;
@@ -361,6 +383,11 @@ public:
 				}
 			}
 
+			if(!buf.isNull())
+				resp.body = buf;
+			else
+				resp.body = "";
+
 			outCredits -= resp.body.size();
 
 			resp.more = (hreq->bytesAvailable() > 0 || !hreq->isFinished());
@@ -370,8 +397,13 @@ public:
 		}
 		else
 		{
-			resp.body = inbuf;
-			inbuf.clear();
+			if(!inbuf.isNull())
+			{
+				resp.body = inbuf;
+				inbuf.clear();
+			}
+			else
+				resp.body = "";
 		}
 
 		writeResponse(resp);
@@ -383,6 +415,11 @@ public:
 			cleanup();
 			emit q->finished();
 		}
+	}
+
+	void refreshTimeout()
+	{
+		timer->start(SESSION_TIMEOUT * 1000);
 	}
 
 private slots:
@@ -424,6 +461,8 @@ private slots:
 	void req_readyRead()
 	{
 		QPointer<QObject> self = this;
+
+		refreshTimeout();
 
 		stuffToRead = true;
 
@@ -489,6 +528,22 @@ private slots:
 				resp.condition = "undefined-condition";
 				break;
 		}
+
+		writeResponse(resp);
+		if(!self)
+			return;
+
+		cleanup();
+		emit q->finished();
+	}
+
+	void timer_timeout()
+	{
+		QPointer<QObject> self = this;
+
+		YurlResponsePacket resp;
+		resp.isError = true;
+		resp.condition = "connection-timeout";
 
 		writeResponse(resp);
 		if(!self)
