@@ -2,8 +2,8 @@
 
 #include <stdio.h>
 #include <assert.h>
-#include <stdarg.h>
 #include <QHash>
+#include <QUuid>
 #include <QSettings>
 #include <QHostAddress>
 #include <QtCrypto>
@@ -12,7 +12,9 @@
 #include "qzmqreqmessage.h"
 #include "qzmqvalve.h"
 #include "tnetstring.h"
+#include "yurlresponsepacket.h"
 #include "appconfig.h"
+#include "log.h"
 #include "worker.h"
 
 #define VERSION "1.0"
@@ -23,8 +25,6 @@ class App::Private : public QObject
 
 public:
 	App *q;
-	bool verbose;
-	QTime qtime;
 	JDnsShared *dns;
 	QZmq::Socket *in_sock;
 	QZmq::Socket *in_stream_sock;
@@ -34,13 +34,12 @@ public:
 	QZmq::Valve *in_req_valve;
 	AppConfig config;
 	QSet<Worker*> workers;
-	QHash<QByteArray, Worker*> streamWorkersById;
+	QHash<QByteArray, Worker*> streamWorkersByRid;
 	QHash<Worker*, QList<QByteArray> > reqHeadersByWorker;
 
 	Private(App *_q) :
 		QObject(_q),
 		q(_q),
-		verbose(false),
 		in_sock(0),
 		in_stream_sock(0),
 		out_sock(0),
@@ -48,54 +47,6 @@ public:
 		in_valve(0),
 		in_req_valve(0)
 	{
-		qtime.start();
-	}
-
-	void log(int level, const char *fmt, va_list ap) const
-	{
-		if(level <= 1 || verbose)
-		{
-			QString str;
-			str.vsprintf(fmt, ap);
-
-			const char *lstr;
-			switch(level)
-			{
-				case 0: lstr = "ERR"; break;
-				case 1: lstr = "WARN"; break;
-				case 2:
-				default:
-					lstr = "INFO"; break;
-			}
-
-			QTime t(0, 0);
-			t = t.addMSecs(qtime.elapsed());
-			fprintf(stderr, "[%s] %s %s\n", lstr, qPrintable(t.toString("HH:mm:ss.zzz")), qPrintable(str));
-		}
-	}
-
-	void log_info(const char *fmt, ...) const
-	{
-		va_list ap;
-		va_start(ap, fmt);
-		log(2, fmt, ap);
-		va_end(ap);
-	}
-
-	void log_warning(const char *fmt, ...) const
-	{
-		va_list ap;
-		va_start(ap, fmt);
-		log(1, fmt, ap);
-		va_end(ap);
-	}
-
-	void log_error(const char *fmt, ...) const
-	{
-		va_list ap;
-		va_start(ap, fmt);
-		log(0, fmt, ap);
-		va_end(ap);
 	}
 
 	void start()
@@ -147,7 +98,9 @@ public:
 		}
 
 		if(options.contains("verbose"))
-			verbose = true;
+			log_setOutputLevel(LOG_LEVEL_DEBUG);
+		else
+			log_setOutputLevel(LOG_LEVEL_WARNING);
 
 		QString configFile = options["config"];
 		if(configFile.isEmpty())
@@ -165,6 +118,10 @@ public:
 		}
 
 		QSettings settings(configFile, QSettings::IniFormat);
+
+		config.clientId = settings.value("instance_id").toString().toUtf8();
+		if(config.clientId.isEmpty())
+			config.clientId = QUuid::createUuid().toByteArray();
 
 		QString in_url = settings.value("in_spec").toString();
 		QString in_stream_url = settings.value("in_stream_spec").toString();
@@ -218,6 +175,7 @@ public:
 		if(!in_stream_url.isEmpty())
 		{
 			in_stream_sock = new QZmq::Socket(QZmq::Socket::Router, this);
+			in_stream_sock->setIdentity(config.clientId);
 			connect(in_stream_sock, SIGNAL(readyRead()), SLOT(in_stream_readyRead()));
 			if(!in_stream_sock->bind(in_stream_url))
 			{
@@ -260,6 +218,18 @@ public:
 		log_info("started");
 	}
 
+	// normally responses are handled by Workers, but in some routing
+	//   cases we need to be able to respond with an error at this layer
+	void respondError(const QByteArray &receiver, const QByteArray &rid, const QByteArray &condition)
+	{
+		YurlResponsePacket out;
+		out.id = rid;
+		out.isError = true;
+		out.condition = condition;
+		QByteArray part = TnetString::fromVariant(out.toVariant());
+		out_sock->write(QList<QByteArray>() << (receiver + ' ' + part));
+	}
+
 private slots:
 	void in_readyRead(const QList<QByteArray> &message)
 	{
@@ -269,25 +239,25 @@ private slots:
 			return;
 		}
 
-		int at = message[0].indexOf(' ');
-		if(at == -1)
-		{
-			log_warning("received message with invalid format (missing receiver), skipping");
-			return;
-		}
-
-		QByteArray receiver = message[0].mid(0, at);
-		if(receiver.isEmpty())
-		{
-			log_warning("received message with invalid format (receiver empty), skipping");
-			return;
-		}
-
 		bool ok;
-		QVariant data = TnetString::toVariant(message[0], at + 1, &ok);
+		QVariant data = TnetString::toVariant(message[0], 0, &ok);
 		if(!ok)
 		{
 			log_warning("received message with invalid format (tnetstring parse failed), skipping");
+			return;
+		}
+
+		QVariantHash vhash = data.toHash();
+		QByteArray rid = vhash.value("id").toByteArray();
+		if(rid.isEmpty())
+		{
+			log_warning("received stream message without request id, skipping");
+			return;
+		}
+
+		if(streamWorkersByRid.contains(rid))
+		{
+			log_warning("received request for id already in use, skipping");
 			return;
 		}
 
@@ -296,7 +266,7 @@ private slots:
 		connect(w, SIGNAL(finished()), SLOT(worker_finished()));
 
 		workers += w;
-		streamWorkersById[w->id()] = w;
+		streamWorkersByRid[rid] = w;
 
 		if(workers.count() >= config.maxWorkers)
 		{
@@ -307,25 +277,12 @@ private slots:
 				in_req_valve->close();
 		}
 
-		w->start(receiver, data, Worker::Stream);
+		w->start(data, Worker::Stream);
 	}
 
 	void in_stream_readyRead()
 	{
 		QZmq::ReqMessage reqMessage(in_stream_sock->read());
-		if(reqMessage.headers().isEmpty())
-		{
-			log_warning("received message with no routing id, skipping");
-			return;
-		}
-
-		Worker *w = streamWorkersById.value(reqMessage.headers()[0]);
-		if(!w)
-		{
-			log_warning("received message with unknown routing id, skipping");
-			return;
-		}
-
 		if(reqMessage.content().count() != 1)
 		{
 			log_warning("received message with parts != 1, skipping");
@@ -337,6 +294,25 @@ private slots:
 		if(!ok)
 		{
 			log_warning("received message with invalid format (tnetstring parse failed), skipping");
+			return;
+		}
+
+		QVariantHash vhash = data.toHash();
+		QByteArray rid = vhash.value("id").toByteArray();
+		if(rid.isEmpty())
+		{
+			log_warning("received stream message without request id, skipping");
+			return;
+		}
+
+		Worker *w = streamWorkersByRid.value(rid);
+		if(!w)
+		{
+			QByteArray receiver = vhash.value("sender").toByteArray();
+			bool cancel = vhash.value("cancel").toBool();
+			if(!receiver.isEmpty() && !cancel)
+				respondError(receiver, rid, "cancel");
+
 			return;
 		}
 
@@ -376,7 +352,7 @@ private slots:
 				in_valve->close();
 		}
 
-		w->start(QByteArray(), data, Worker::Single);
+		w->start(data, Worker::Single);
 	}
 
 	void worker_readyRead(const QByteArray &receiver, const QVariant &response)
@@ -391,7 +367,8 @@ private slots:
 		else
 		{
 			assert(reqHeadersByWorker.contains(w));
-			out_sock->write(QZmq::ReqMessage(reqHeadersByWorker.value(w), QList<QByteArray>() << part).toRawMessage());
+			QList<QByteArray> reqHeaders = reqHeadersByWorker.value(w);
+			in_req_sock->write(QZmq::ReqMessage(reqHeaders, QList<QByteArray>() << part).toRawMessage());
 		}
 	}
 
@@ -399,7 +376,7 @@ private slots:
 	{
 		Worker *w = (Worker *)sender();
 
-		streamWorkersById.remove(w->id());
+		streamWorkersByRid.remove(w->rid());
 		reqHeadersByWorker.remove(w);
 		workers.remove(w);
 

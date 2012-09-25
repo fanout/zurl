@@ -14,8 +14,9 @@ HEADERS += \
 	$$PWD/yurlrequestpacket.h \
 	$$PWD/yurlresponsepacket.h \
 	$$PWD/httprequest.h \
-	$$PWD/worker.h \
+	$$PWD/log.h \
 	$$PWD/appconfig.h \
+	$$PWD/worker.h \
 	$$PWD/app.h
 
 SOURCES += \
@@ -24,6 +25,7 @@ SOURCES += \
 	$$PWD/yurlrequestpacket.cpp \
 	$$PWD/yurlresponsepacket.cpp \
 	$$PWD/httprequest.cpp \
+	$$PWD/log.cpp \
 	$$PWD/worker.cpp \
 	$$PWD/app.cpp \
 	$$PWD/main.cpp

@@ -21,10 +21,9 @@ public:
 	Worker(JDnsShared *dns, AppConfig *config, QObject *parent = 0);
 	~Worker();
 
-	// unique id among all workers, valid after construction
-	QByteArray id() const;
+	QByteArray rid() const;
 
-	void start(const QByteArray &receiver, const QVariant &request, Mode mode);
+	void start(const QVariant &request, Mode mode);
 	void write(const QVariant &request);
 
 signals:

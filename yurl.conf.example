@@ -1,4 +1,7 @@
 [General]
+# instance routing id. keep blank for random. set for better error recovery
+instance_id=
+
 # bind PULL for initiating a request
 in_spec=tcp://*:5550
 

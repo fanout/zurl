@@ -9,6 +9,7 @@ class YurlRequestPacket
 {
 public:
 	QByteArray id;
+	QByteArray sender;
 	int seq;
 
 	bool cancel;

@@ -23,14 +23,61 @@ bool YurlRequestPacket::fromVariant(const QVariant &in)
 		return false;
 	id = obj["id"].toByteArray();
 
-	if(!obj.contains("method") || obj["method"].type() != QVariant::ByteArray)
-		return false;
-	method = QString::fromLatin1(obj["method"].toByteArray());
+	sender.clear();
+	if(obj.contains("sender"))
+	{
+		if(obj["sender"].type() != QVariant::ByteArray)
+			return false;
 
-	if(!obj.contains("url") || obj["url"].type() != QVariant::ByteArray)
-		return false;
-	url = QUrl::fromEncoded(obj["url"].toByteArray(), QUrl::StrictMode);
+		sender = obj["sender"].toByteArray();
+	}
 
+	seq = 0;
+	if(obj.contains("seq"))
+	{
+		if(obj["seq"].type() != QVariant::Int)
+			return false;
+
+		seq = obj["seq"].toInt();
+	}
+
+	cancel = false;
+	if(obj.contains("cancel"))
+	{
+		if(obj["cancel"].type() != QVariant::Bool)
+			return false;
+
+		cancel = obj["cancel"].toBool();
+	}
+
+	more = false;
+	if(obj.contains("more"))
+	{
+		if(obj["more"].type() != QVariant::Bool)
+			return false;
+
+		more = obj["more"].toBool();
+	}
+
+	method.clear();
+	if(obj.contains("method"))
+	{
+		if(obj["method"].type() != QVariant::ByteArray)
+			return false;
+
+		method = QString::fromLatin1(obj["method"].toByteArray());
+	}
+
+	url.clear();
+	if(obj.contains("url"))
+	{
+		if(obj["url"].type() != QVariant::ByteArray)
+			return false;
+
+		url = QUrl::fromEncoded(obj["url"].toByteArray(), QUrl::StrictMode);
+	}
+
+	headers.clear();
 	if(obj.contains("headers"))
 	{
 		if(obj["headers"].type() != QVariant::List)

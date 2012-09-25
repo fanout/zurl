@@ -19,24 +19,22 @@ public:
 		ErrorPolicy,
 		ErrorConnect,
 		ErrorTls,
-		ErrorTimeout,
-		ErrorMaxSizeExceeded
+		ErrorTimeout
 	};
 
 	HttpRequest(JDnsShared *dns, QObject *parent = 0);
 	~HttpRequest();
 
-	void setMaximumResponseSize(int size);
 	void setConnectHost(const QString &host);
 
 	void start(const QString &method, const QUrl &url, const HttpHeaders &headers);
-	void stop();
 
 	// may call this multiple times
 	void writeBody(const QByteArray &body);
 
 	void endBody();
 
+	int bytesAvailable() const;
 	bool isFinished() const;
 	ErrorCondition errorCondition() const;
 
@@ -44,7 +42,7 @@ public:
 	QByteArray responseStatus() const;
 	HttpHeaders responseHeaders() const;
 
-	QByteArray readResponseBody(); // takes from the buffer
+	QByteArray readResponseBody(int size = -1); // takes from the buffer
 
 signals:
 	void nextAddress(const QHostAddress &addr);
