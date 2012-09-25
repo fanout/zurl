@@ -138,7 +138,7 @@ done
 PREFIX=${PREFIX:-/usr/local}
 BINDIR=${BINDIR:-$PREFIX/bin}
 
-echo "Configuring Yurl ..."
+echo "Configuring Zurl ..."
 
 if [ "$QC_VERBOSE" = "Y" ]; then
 echo
@@ -1360,7 +1360,7 @@ fi
 
 QC_COMMAND=$0
 export QC_COMMAND
-QC_PROFILE=yurl.pro
+QC_PROFILE=zurl.pro
 export QC_PROFILE
 QC_QMAKE=$qm
 export QC_QMAKE
