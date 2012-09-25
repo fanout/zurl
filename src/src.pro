@@ -2,7 +2,7 @@ CONFIG += console
 CONFIG -= app_bundle
 QT -= gui
 QT += network
-TARGET = yurl
+TARGET = zurl
 DESTDIR = ..
 
 include($$OUT_PWD/../conf.pri)

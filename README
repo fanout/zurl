@@ -1,4 +1,4 @@
-Yurl 1.0
+Zurl 1.0
 --------
 Date: September 24th, 2012
 Author: Justin Karneges <justin@fanout.io>
@@ -33,7 +33,7 @@ Build:
 
 Run:
 
-  ./yurl --verbose --config=yurl.conf.example
+  ./zurl --verbose --config=zurl.conf.example
 
 Test:
 

@@ -1,6 +1,6 @@
 <qconf>
- <name>Yurl</name>
- <profile>yurl.pro</profile>
+ <name>Zurl</name>
+ <profile>zurl.pro</profile>
  <moddir>qcm</moddir>
  <dep type='qt47'>
   <required/>
