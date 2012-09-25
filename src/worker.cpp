@@ -81,7 +81,7 @@ public:
 			bool cancel = vhash.value("cancel").toBool();
 			if(!receiver.isEmpty() && !cancel)
 			{
-				QMetaObject::invokeMethod(this, "doError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
+				QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
 			}
 			else
 			{
@@ -109,7 +109,7 @@ public:
 		// some required fields
 		if(request.method.isEmpty() || request.url.isEmpty())
 		{
-			QMetaObject::invokeMethod(this, "doError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
+			QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
 			return;
 		}
 
@@ -118,14 +118,14 @@ public:
 		// stream mode requires sender subscriber id and sequence number
 		if(mode == Worker::Stream && (receiver.isEmpty() || request.seq != 0))
 		{
-			QMetaObject::invokeMethod(this, "doError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
+			QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
 			return;
 		}
 
 		// can't use these two together
 		if(mode == Worker::Single && request.more)
 		{
-			QMetaObject::invokeMethod(this, "doError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
+			QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
 			return;
 		}
 
@@ -135,14 +135,14 @@ public:
 		// can't use an inbound stream for non-POST/PUT
 		if(!methodHasBody && request.more)
 		{
-			QMetaObject::invokeMethod(this, "doError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
+			QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
 			return;
 		}
 
 		// must provide content-length if planning on sending more packets
 		if(request.more && !request.headers.contains("content-length"))
 		{
-			QMetaObject::invokeMethod(this, "doError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
+			QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
 			return;
 		}
 
@@ -150,7 +150,7 @@ public:
 
 		if(!isAllowed(request.url.host()) || (!request.connectHost.isEmpty() && !isAllowed(request.connectHost)))
 		{
-			QMetaObject::invokeMethod(this, "doError", Qt::QueuedConnection, Q_ARG(QByteArray, "policy-violation"));
+			QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "policy-violation"));
 			return;
 		}
 
@@ -209,7 +209,7 @@ public:
 			QVariantHash vhash = vrequest.toHash();
 			if(!vhash["cancel"].toBool())
 			{
-				QMetaObject::invokeMethod(this, "doError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
+				QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
 			}
 			else
 			{
@@ -225,7 +225,7 @@ public:
 		{
 			if(!request.cancel)
 			{
-				QMetaObject::invokeMethod(this, "doError", Qt::QueuedConnection, Q_ARG(QByteArray, "cancel"));
+				QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "cancel"));
 			}
 			else
 			{
@@ -251,7 +251,7 @@ public:
 			{
 				if(bodySent)
 				{
-					QMetaObject::invokeMethod(this, "doError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
+					QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
 					return;
 				}
 
@@ -369,16 +369,7 @@ public:
 			{
 				if(maxResponseSize != -1 && bytesReceived + buf.size() > maxResponseSize)
 				{
-					YurlResponsePacket resp;
-					resp.isError = true;
-					resp.condition = "max-size-exceeded";
-
-					writeResponse(resp);
-					if(!self)
-						return;
-
-					cleanup();
-					emit q->finished();
+					respondError("max-size-exceeded");
 					return;
 				}
 			}
@@ -388,6 +379,7 @@ public:
 			else
 				resp.body = "";
 
+			bytesReceived += resp.body.size();
 			outCredits -= resp.body.size();
 
 			resp.more = (hreq->bytesAvailable() > 0 || !hreq->isFinished());
@@ -423,7 +415,7 @@ public:
 	}
 
 private slots:
-	void doError(const QByteArray &condition)
+	void respondError(const QByteArray &condition)
 	{
 		QPointer<QObject> self = this;
 
@@ -441,27 +433,12 @@ private slots:
 
 	void req_nextAddress(const QHostAddress &addr)
 	{
-		QPointer<QObject> self = this;
-
 		if(!isAllowed(addr.toString()))
-		{
-			YurlResponsePacket resp;
-			resp.isError = true;
-			resp.condition = "policy-violation";
-
-			writeResponse(resp);
-			if(!self)
-				return;
-
-			cleanup();
-			emit q->finished();
-		}
+			respondError("policy-violation");
 	}
 
 	void req_readyRead()
 	{
-		QPointer<QObject> self = this;
-
 		refreshTimeout();
 
 		stuffToRead = true;
@@ -479,16 +456,7 @@ private slots:
 			{
 				if(maxResponseSize != -1 && bytesReceived + buf.size() > maxResponseSize)
 				{
-					YurlResponsePacket resp;
-					resp.isError = true;
-					resp.condition = "max-size-exceeded";
-
-					writeResponse(resp);
-					if(!self)
-						return;
-
-					cleanup();
-					emit q->finished();
+					respondError("max-size-exceeded");
 					return;
 				}
 
@@ -512,45 +480,25 @@ private slots:
 
 	void req_error()
 	{
-		QPointer<QObject> self = this;
-
-		YurlResponsePacket resp;
-
-		resp.isError = true;
+		QByteArray condition;
 		switch(hreq->errorCondition())
 		{
-			case HttpRequest::ErrorPolicy:          resp.condition = "policy-violation"; break;
-			case HttpRequest::ErrorConnect:         resp.condition = "remote-connection-failed"; break;
-			case HttpRequest::ErrorTls:             resp.condition = "tls-error"; break;
-			case HttpRequest::ErrorTimeout:         resp.condition = "connection-timeout"; break;
+			case HttpRequest::ErrorPolicy:  condition = "policy-violation"; break;
+			case HttpRequest::ErrorConnect: condition = "remote-connection-failed"; break;
+			case HttpRequest::ErrorTls:     condition = "tls-error"; break;
+			case HttpRequest::ErrorTimeout: condition = "connection-timeout"; break;
 			case HttpRequest::ErrorGeneric:
 			default:
-				resp.condition = "undefined-condition";
+				condition = "undefined-condition";
 				break;
 		}
 
-		writeResponse(resp);
-		if(!self)
-			return;
-
-		cleanup();
-		emit q->finished();
+		respondError(condition);
 	}
 
 	void timer_timeout()
 	{
-		QPointer<QObject> self = this;
-
-		YurlResponsePacket resp;
-		resp.isError = true;
-		resp.condition = "connection-timeout";
-
-		writeResponse(resp);
-		if(!self)
-			return;
-
-		cleanup();
-		emit q->finished();
+		respondError("connection-timeout");
 	}
 };
 
