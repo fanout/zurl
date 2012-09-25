@@ -1,6 +1,6 @@
 Yurl 1.0
 --------
-Date: July 3rd, 2012
+Date: September 24th, 2012
 Author: Justin Karneges <justin@fanout.io>
 
 HTTP client worker with ZeroMQ interface, written in Qt/C++.
@@ -11,7 +11,7 @@ Features:
   - Completely event-driven, using JDNS and QNetworkAccessManager
   - Handle thousands of simultaneous outbound connections
   - Two access methods: REQ and PUSH/SUB (think Mongrel2 in reverse!)
-  - Streaming responses
+  - Streaming requests and responses
   - Packet format uses TNetStrings
   - Set access policies (e.g. block requests to 10.*)
 
