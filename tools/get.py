@@ -15,7 +15,6 @@ req = dict()
 req["id"] = str(uuid.uuid4())
 req["method"] = "GET"
 req["url"] = sys.argv[1]
-#req["connect-host"] = "crater.buddycloud.org"
 sock.send(tnetstring.dumps(req))
 
 resp = tnetstring.loads(sock.recv())
