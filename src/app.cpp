@@ -138,7 +138,7 @@ public:
 
 		config.clientId = settings.value("instance_id").toString().toUtf8();
 		if(config.clientId.isEmpty())
-			config.clientId = QUuid::createUuid().toByteArray();
+			config.clientId = QUuid::createUuid().toString().toLatin1();
 
 		QString in_url = settings.value("in_spec").toString();
 		QString in_stream_url = settings.value("in_stream_spec").toString();
@@ -283,6 +283,7 @@ private slots:
 		connect(w, SIGNAL(finished()), SLOT(worker_finished()));
 
 		workers += w;
+		printf("worker count: %d\n", workers.count());
 		streamWorkersByRid[rid] = w;
 
 		if(workers.count() >= config.maxWorkers)
