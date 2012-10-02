@@ -283,7 +283,6 @@ private slots:
 		connect(w, SIGNAL(finished()), SLOT(worker_finished()));
 
 		workers += w;
-		printf("worker count: %d\n", workers.count());
 		streamWorkersByRid[rid] = w;
 
 		if(workers.count() >= config.maxWorkers)
