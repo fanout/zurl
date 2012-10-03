@@ -490,9 +490,12 @@ private slots:
 
 	void req_bytesWritten(int count)
 	{
-		ZurlResponsePacket resp;
-		resp.credits = count;
-		writeResponse(resp);
+		if(!bodySent)
+		{
+			ZurlResponsePacket resp;
+			resp.credits = count;
+			writeResponse(resp);
+		}
 	}
 
 	void req_error()
