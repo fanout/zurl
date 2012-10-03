@@ -18,6 +18,7 @@
 #include "zurlresponsepacket.h"
 
 ZurlResponsePacket::ZurlResponsePacket() :
+	seq(-1),
 	isError(false),
 	code(-1),
 	more(false),
@@ -37,7 +38,8 @@ QVariant ZurlResponsePacket::toVariant() const
 	}
 	else
 	{
-		obj["seq"] = seq;
+		if(seq != -1)
+			obj["seq"] = seq;
 
 		if(!replyAddress.isEmpty())
 			obj["reply-address"] = replyAddress;

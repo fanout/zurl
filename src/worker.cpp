@@ -47,6 +47,7 @@ public:
 	QVariant userData;
 	int maxResponseSize;
 	HttpRequest *hreq;
+	bool quiet;
 	bool sentHeader;
 	bool methodHasBody;
 	bool bodySent;
@@ -85,7 +86,6 @@ public:
 
 	void start(const QVariant &vrequest, Mode mode)
 	{
-		inSeq = 0;
 		outSeq = 0;
 
 		ZurlRequestPacket request;
@@ -113,6 +113,7 @@ public:
 		receiver = request.sender;
 		outCredits = 0;
 		userData = request.userData;
+		quiet = false;
 		sentHeader = false;
 		stuffToRead = false;
 		bytesReceived = 0;
@@ -132,12 +133,16 @@ public:
 
 		log_info("IN id=%s, %s %s", request.id.data(), qPrintable(request.method), qPrintable(request.url.toString()));
 
-		// stream mode requires sender subscriber id and sequence number
-		if(mode == Worker::Stream && (receiver.isEmpty() || request.seq != 0))
+		// inbound streaming must start with sequence number of 0
+		if(mode == Worker::Stream && request.more && request.seq != 0)
 		{
 			QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
 			return;
 		}
+
+		// fire and forget
+		if(mode == Worker::Stream && receiver.isEmpty())
+			quiet = true;
 
 		// can't use these two together
 		if(mode == Worker::Single && request.more)
@@ -238,7 +243,7 @@ public:
 		}
 
 		// cancel session if a wrong sequenced packet is received
-		if(request.seq == -1 || request.seq != inSeq + 1)
+		if(inSeq == -1 || request.seq == -1 || request.seq != inSeq + 1)
 		{
 			if(!request.cancel)
 			{
@@ -356,7 +361,8 @@ public:
 				log_info("OUT id=%s %d%s", out.id.data(), out.body.size(), out.more ? " M" : "");
 		}
 
-		emit q->readyRead(receiver, out.toVariant());
+		if(!quiet)
+			emit q->readyRead(receiver, out.toVariant());
 	}
 
 	// emits signals, but safe to delete after
@@ -380,7 +386,14 @@ public:
 
 		if(outStream)
 		{
-			QByteArray buf = hreq->readResponseBody(outCredits);
+			// note: we skip credits handling if quiet mode
+
+			QByteArray buf;
+
+			if(!quiet)
+				buf = hreq->readResponseBody(outCredits);
+			else
+				buf = hreq->readResponseBody(); // all
 
 			if(!buf.isEmpty())
 			{
@@ -397,7 +410,9 @@ public:
 				resp.body = "";
 
 			bytesReceived += resp.body.size();
-			outCredits -= resp.body.size();
+
+			if(!quiet)
+				outCredits -= resp.body.size();
 
 			resp.more = (hreq->bytesAvailable() > 0 || !hreq->isFinished());
 
@@ -462,7 +477,8 @@ private slots:
 
 		if(outStream)
 		{
-			if(outCredits < 1)
+			// only wait for credits if not quiet
+			if(!quiet && outCredits < 1)
 				return;
 		}
 		else

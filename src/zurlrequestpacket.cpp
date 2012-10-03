@@ -20,7 +20,7 @@
 #include "tnetstring.h"
 
 ZurlRequestPacket::ZurlRequestPacket() :
-	seq(0),
+	seq(-1),
 	cancel(false),
 	more(false),
 	stream(false),
