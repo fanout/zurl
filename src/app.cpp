@@ -191,7 +191,7 @@ public:
 
 		if(!in_stream_url.isEmpty())
 		{
-			in_stream_sock = new QZmq::Socket(QZmq::Socket::Router, this);
+			in_stream_sock = new QZmq::Socket(QZmq::Socket::Dealer, this);
 			in_stream_sock->setIdentity(config.clientId);
 			connect(in_stream_sock, SIGNAL(readyRead()), SLOT(in_stream_readyRead()));
 			if(!in_stream_sock->bind(in_stream_url))
@@ -299,15 +299,22 @@ private slots:
 
 	void in_stream_readyRead()
 	{
-		QZmq::ReqMessage reqMessage(in_stream_sock->read());
-		if(reqMessage.content().count() != 1)
+		// message from DEALER socket will have two parts, with first part empty
+		QList<QByteArray> message = in_stream_sock->read();
+		if(message.count() != 2)
 		{
-			log_warning("received message with parts != 1, skipping");
+			log_warning("received message with parts != 2, skipping");
+			return;
+		}
+
+		if(!message[0].isEmpty())
+		{
+			log_warning("received message with non-empty first part, skipping");
 			return;
 		}
 
 		bool ok;
-		QVariant data = TnetString::toVariant(reqMessage.content()[0], 0, &ok);
+		QVariant data = TnetString::toVariant(message[1], 0, &ok);
 		if(!ok)
 		{
 			log_warning("received message with invalid format (tnetstring parse failed), skipping");

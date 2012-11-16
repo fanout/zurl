@@ -5,13 +5,13 @@ instance_id=
 # bind PULL for initiating a request
 in_spec=tcp://*:5550
 
-# bind ROUTER for continuing a request
+# bind DEALER for continuing a request
 in_stream_spec=tcp://*:5551
 
 # bind PUB for responding
 out_spec=tcp://*:5552
 
-# bind REP (as ROUTER) for handling non-streamed requests/responses
+# bind ROUTER for handling non-streamed requests/responses
 in_req_spec=tcp://*:5553
 
 # default policy, one of "allow" or "deny"
