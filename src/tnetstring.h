@@ -53,6 +53,8 @@ QVariantList toList(const QByteArray &in, int offset, int dataOffset, int dataSi
 QVariant toVariant(const QByteArray &in, int offset, Type type, int dataOffset, int dataSize, bool *ok = 0);
 QVariant toVariant(const QByteArray &in, int offset = 0, bool *ok = 0);
 
+QString byteArrayToEscapedString(const QByteArray &in);
+
 // pass >= 0 for pretty print, -1 for compact
 QString variantToString(const QVariant &in, int indent = 0);
 
