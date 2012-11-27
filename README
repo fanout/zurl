@@ -5,6 +5,10 @@ Author: Justin Karneges <justin@fanout.io>
 
 HTTP client worker with ZeroMQ interface, written in Qt/C++.
 
+License:
+
+  - Zurl is offered under the GNU GPL. See the COPYING file.
+
 Features:
 
   - Request HTTP and HTTPS URLs
