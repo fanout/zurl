@@ -28,6 +28,7 @@
 #include "qzmqsocket.h"
 #include "qzmqreqmessage.h"
 #include "qzmqvalve.h"
+#include "processquit.h"
 #include "tnetstring.h"
 #include "zurlresponsepacket.h"
 #include "appconfig.h"
@@ -63,6 +64,11 @@ public:
 		in_req_sock(0),
 		in_valve(0),
 		in_req_valve(0)
+	{
+		connect(ProcessQuit::instance(), SIGNAL(quit()), SLOT(doQuit()));
+	}
+
+	~Private()
 	{
 	}
 
@@ -118,6 +124,8 @@ public:
 			log_setOutputLevel(LOG_LEVEL_DEBUG);
 		else
 			log_setOutputLevel(LOG_LEVEL_INFO);
+
+		log_info("starting...");
 
 		QString configFile = options["config"];
 		if(configFile.isEmpty())
@@ -415,6 +423,17 @@ private slots:
 			in_valve->open();
 		if(in_req_valve)
 			in_req_valve->open();
+	}
+
+	void doQuit()
+	{
+		log_info("stopping...");
+
+		// remove the handler, so if we get another signal then we crash out
+		ProcessQuit::cleanup();
+
+		log_info("stopped");
+		emit q->quit();
 	}
 };
 

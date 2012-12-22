@@ -8,6 +8,10 @@ SOURCES += $$PWD/jdnsshared/jdnsshared.cpp
 INCLUDEPATH += $$PWD/qzmq/src
 include(qzmq/src/src.pri)
 
+DEFINES += NO_IRISNET
+HEADERS += $$PWD/processquit.h
+SOURCES += $$PWD/processquit.cpp
+
 HEADERS += \
 	$$PWD/tnetstring.h \
 	$$PWD/httpheaders.h \
