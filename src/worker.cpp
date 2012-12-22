@@ -176,7 +176,7 @@ public:
 		{
 			log_warning("streamed input requires content-length");
 
-			QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
+			QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "length-required"));
 			return;
 		}
 
