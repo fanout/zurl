@@ -91,6 +91,8 @@ public:
 		ZurlRequestPacket request;
 		if(!request.fromVariant(vrequest))
 		{
+			log_warning("failed to parse zurl request");
+
 			QVariantHash vhash = vrequest.toHash();
 			rid = vhash.value("id").toByteArray();
 			assert(!rid.isEmpty()); // app layer ensures this
@@ -127,6 +129,8 @@ public:
 		// some required fields
 		if(request.method.isEmpty() || request.url.isEmpty())
 		{
+			log_warning("missing request method or missing url");
+
 			QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
 			return;
 		}
@@ -136,6 +140,8 @@ public:
 		// inbound streaming must start with sequence number of 0
 		if(mode == Worker::Stream && request.more && request.seq != 0)
 		{
+			log_warning("streamed input must start with seq 0");
+
 			QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
 			return;
 		}
@@ -147,6 +153,8 @@ public:
 		// can't use these two together
 		if(mode == Worker::Single && request.more)
 		{
+			log_warning("cannot use streamed input on router interface");
+
 			QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
 			return;
 		}
@@ -157,6 +165,8 @@ public:
 		// can't use an inbound stream for non-POST/PUT
 		if(!methodHasBody && request.more)
 		{
+			log_warning("can't use an inbound stream for non-POST/PUT");
+
 			QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
 			return;
 		}
@@ -164,6 +174,8 @@ public:
 		// must provide content-length if planning on sending more packets
 		if(request.more && !request.headers.contains("content-length"))
 		{
+			log_warning("streamed input requires content-length");
+
 			QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
 			return;
 		}

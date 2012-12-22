@@ -17,7 +17,6 @@
 
 #include "httprequest.h"
 
-#include <stdio.h>
 #include <assert.h>
 #include <QPointer>
 #include <QUrl>
@@ -26,6 +25,7 @@
 #include <QNetworkReply>
 #include <QtCrypto>
 #include "jdnsshared.h"
+#include "log.h"
 
 class HttpRequest::ReqBodyDevice : public QIODevice
 {
@@ -308,6 +308,8 @@ private slots:
 
 	void reply_error(QNetworkReply::NetworkError code)
 	{
+		log_debug("HttpRequest::reply_error: %d\n", (int)code);
+
 		QVariant v = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute);
 		if(v.isValid())
 		{
@@ -333,6 +335,8 @@ private slots:
 
 	void reply_sslErrors(const QList<QSslError> &errors)
 	{
+		log_debug("HttpRequest::reply_sslErrors, count: %d\n", errors.count());
+
 		// we'll almost always get a host mismatch error since we replace the host with ip address
 		if(errors.count() == 1 && errors[0].error() == QSslError::HostNameMismatch)
 		{

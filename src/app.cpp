@@ -117,7 +117,7 @@ public:
 		if(options.contains("verbose"))
 			log_setOutputLevel(LOG_LEVEL_DEBUG);
 		else
-			log_setOutputLevel(LOG_LEVEL_WARNING);
+			log_setOutputLevel(LOG_LEVEL_INFO);
 
 		QString configFile = options["config"];
 		if(configFile.isEmpty())
@@ -264,6 +264,8 @@ private slots:
 			return;
 		}
 
+		log_debug("recv: %s", qPrintable(TnetString::variantToString(data)));
+
 		QVariantHash vhash = data.toHash();
 		QByteArray rid = vhash.value("id").toByteArray();
 		if(rid.isEmpty())
@@ -320,6 +322,8 @@ private slots:
 			log_warning("received message with invalid format (tnetstring parse failed), skipping");
 			return;
 		}
+
+		log_debug("recv-stream: %s", qPrintable(TnetString::variantToString(data)));
 
 		QVariantHash vhash = data.toHash();
 		QByteArray rid = vhash.value("id").toByteArray();
