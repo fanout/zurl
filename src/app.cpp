@@ -37,6 +37,18 @@
 
 #define VERSION "1.0"
 
+static void cleanStringList(QStringList *in)
+{
+	for(int n = 0; n < in->count(); ++n)
+	{
+		if(in->at(n).isEmpty())
+		{
+			in->removeAt(n);
+			--n; // adjust position
+		}
+	}
+}
+
 class App::Private : public QObject
 {
 	Q_OBJECT
@@ -179,6 +191,9 @@ public:
 		config.allowExps = settings.value("allow").toStringList();
 		config.denyExps = settings.value("deny").toStringList();
 
+		cleanStringList(&config.allowExps);
+		cleanStringList(&config.denyExps);
+
 		dns = new JDnsShared(JDnsShared::UnicastInternet, this);
 		dns->addInterface(QHostAddress::Any);
 		dns->addInterface(QHostAddress::AnyIPv6);
@@ -272,7 +287,7 @@ private slots:
 			return;
 		}
 
-		log_debug("recv: %s", qPrintable(TnetString::variantToString(data)));
+		log_debug("recv: %s", qPrintable(TnetString::variantToString(data, -1)));
 
 		QVariantHash vhash = data.toHash();
 		QByteArray rid = vhash.value("id").toByteArray();
@@ -331,7 +346,7 @@ private slots:
 			return;
 		}
 
-		log_debug("recv-stream: %s", qPrintable(TnetString::variantToString(data)));
+		log_debug("recv-stream: %s", qPrintable(TnetString::variantToString(data, -1)));
 
 		QVariantHash vhash = data.toHash();
 		QByteArray rid = vhash.value("id").toByteArray();
@@ -371,6 +386,8 @@ private slots:
 			log_warning("received message with invalid format (tnetstring parse failed), skipping");
 			return;
 		}
+
+		log_debug("recv-req: %s", qPrintable(TnetString::variantToString(data, -1)));
 
 		Worker *w = new Worker(dns, &config, this);
 		connect(w, SIGNAL(readyRead(const QByteArray &, const QVariant &)), SLOT(worker_readyRead(const QByteArray &, const QVariant &)));

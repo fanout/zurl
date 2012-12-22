@@ -34,11 +34,18 @@ class HttpRequest::ReqBodyDevice : public QIODevice
 public:
 	QByteArray buf;
 	bool finished;
+	bool accessed;
 
 	ReqBodyDevice(QObject *parent = 0) :
 		QIODevice(parent),
-		finished(false)
+		finished(false),
+		accessed(false)
 	{
+	}
+
+	bool wasAccessed() const
+	{
+		return accessed;
 	}
 
 	void append(const QByteArray &in)
@@ -83,6 +90,8 @@ protected:
 	// reimplemented
 	virtual qint64 readData(char *data, qint64 maxSize)
 	{
+		accessed = true;
+
 		qint64 size = qMin((qint64)buf.size(), maxSize);
 		memcpy(data, buf.data(), size);
 		buf = buf.mid(size);
@@ -122,6 +131,8 @@ public:
 	QList<QHostAddress> addrs;
 	QNetworkReply *reply;
 	int bytesReceived;
+	HttpRequest::ErrorCondition mostSignificantError;
+	bool ignoreEnd;
 
 	Private(HttpRequest *_q, JDnsShared *_dns) :
 		QObject(_q),
@@ -129,7 +140,9 @@ public:
 		dns(_dns),
 		outdev(0),
 		reply(0),
-		bytesReceived(0)
+		bytesReceived(0),
+		mostSignificantError(HttpRequest::ErrorGeneric),
+		ignoreEnd(false)
 	{
 		nam = new QNetworkAccessManager(this);
 	}
@@ -165,8 +178,46 @@ public:
 			outdev = new ReqBodyDevice(this);
 			connect(outdev, SIGNAL(bytesTaken(int)), SLOT(outdev_bytesTaken(int)));
 			outdev->open(QIODevice::ReadOnly);
+
+			startConnect();
 		}
 
+		// for all other method types, outdev will be 0 and we'll
+		//   start the request once endBody() is called. this unifies
+		//   the class usage regardless of method type.
+	}
+
+	void writeBody(const QByteArray &body)
+	{
+		if(outdev)
+		{
+			outdev->append(body);
+		}
+		else
+		{
+			// set this so a follow-up endBody() call does nothing
+			ignoreEnd = true;
+
+			errorCondition = HttpRequest::ErrorBodyNotAllowed;
+			QMetaObject::invokeMethod(q, "error", Qt::QueuedConnection);
+		}
+	}
+
+	void endBody()
+	{
+		if(outdev)
+		{
+			outdev->end();
+		}
+		else
+		{
+			if(!ignoreEnd)
+				startConnect();
+		}
+	}
+
+	void startConnect()
+	{
 		if(!connectHost.isEmpty())
 			host = connectHost;
 		else
@@ -186,16 +237,31 @@ public:
 		}
 	}
 
-	void writeBody(const QByteArray &body)
+	// the idea with the priorities here is that an error is considered
+	//   more significant the closer the request was to succeeding. e.g.
+	//   ErrorTls means the server was actually reached. ErrorPolicy means
+	//   we didn't even attempt to try connecting.
+	//
+	// note that ErrorTimeout is kind of an odd one, as it might get
+	//   occur either during a connect or after a request is already in
+	//   progress. this means a request could actually get performed and
+	//   timeout mid-receive, retried to another server that fails by
+	//   connection refused, and the ErrorConnect would be considered more
+	//   significant even though it is actually further from success in
+	//   this context. but, this seems to be the best we can do with
+	//   QNetworkReply.
+	static int errorPriority(HttpRequest::ErrorCondition e)
 	{
-		assert(outdev);
-		outdev->append(body);
-	}
-
-	void endBody()
-	{
-		assert(outdev);
-		outdev->end();
+		if(e == HttpRequest::ErrorTls)
+			return 100;
+		else if(e == HttpRequest::ErrorConnect)
+			return 99;
+		else if(e == HttpRequest::ErrorTimeout)
+			return 98;
+		else if(e == HttpRequest::ErrorPolicy)
+			return 97;
+		else
+			return 0;
 	}
 
 private slots:
@@ -206,7 +272,7 @@ private slots:
 
 		if(addrs.isEmpty())
 		{
-			errorCondition = HttpRequest::ErrorConnect;
+			errorCondition = mostSignificantError;
 			emit q->error();
 			return;
 		}
@@ -261,7 +327,7 @@ private slots:
 		else
 		{
 			errorCondition = HttpRequest::ErrorGeneric;
-			QMetaObject::invokeMethod(q, "error", Qt::QueuedConnection);
+			emit q->error();
 			return;
 		}
 
@@ -308,7 +374,7 @@ private slots:
 
 	void reply_error(QNetworkReply::NetworkError code)
 	{
-		log_debug("HttpRequest::reply_error: %d\n", (int)code);
+		log_debug("HttpRequest::reply_error: %d", (int)code);
 
 		QVariant v = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute);
 		if(v.isValid())
@@ -318,24 +384,33 @@ private slots:
 			return;
 		}
 
-		if(code == QNetworkReply::ConnectionRefusedError || code == QNetworkReply::TimeoutError)
+		HttpRequest::ErrorCondition curError;
+		if(code == QNetworkReply::ConnectionRefusedError)
+			curError = HttpRequest::ErrorConnect;
+		else if(code == QNetworkReply::SslHandshakeFailedError)
+			curError = HttpRequest::ErrorTls;
+		else if(code == QNetworkReply::TimeoutError)
+			curError = HttpRequest::ErrorTimeout;
+		else
+			curError = HttpRequest::ErrorGeneric;
+
+		if(errorPriority(curError) > errorPriority(mostSignificantError))
+			mostSignificantError = curError;
+
+		// if we started submitting an input body, then we can't retry
+		//   the request
+		if(outdev && outdev->wasAccessed())
 		{
-			tryNextAddress();
+			emit q->error();
 			return;
 		}
-		else if(code == QNetworkReply::SslHandshakeFailedError)
-			errorCondition = HttpRequest::ErrorTls;
-		else if(code == QNetworkReply::TimeoutError)
-			errorCondition = HttpRequest::ErrorTimeout;
-		else
-			errorCondition = HttpRequest::ErrorGeneric;
 
-		emit q->error();
+		tryNextAddress();
 	}
 
 	void reply_sslErrors(const QList<QSslError> &errors)
 	{
-		log_debug("HttpRequest::reply_sslErrors, count: %d\n", errors.count());
+		log_debug("HttpRequest::reply_sslErrors, count: %d", errors.count());
 
 		// we'll almost always get a host mismatch error since we replace the host with ip address
 		if(errors.count() == 1 && errors[0].error() == QSslError::HostNameMismatch)

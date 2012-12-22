@@ -49,7 +49,6 @@ public:
 	HttpRequest *hreq;
 	bool quiet;
 	bool sentHeader;
-	bool methodHasBody;
 	bool bodySent;
 	bool stuffToRead;
 	QByteArray inbuf; // for single mode
@@ -159,26 +158,7 @@ public:
 			return;
 		}
 
-		methodHasBody = (request.method == "POST" || request.method == "PUT");
 		bodySent = false;
-
-		// can't use an inbound stream for non-POST/PUT
-		if(!methodHasBody && request.more)
-		{
-			log_warning("can't use an inbound stream for non-POST/PUT");
-
-			QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
-			return;
-		}
-
-		// must provide content-length if planning on sending more packets
-		if(request.more && !request.headers.contains("content-length"))
-		{
-			log_warning("streamed input requires content-length");
-
-			QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "length-required"));
-			return;
-		}
 
 		inSeq = request.seq;
 
@@ -215,23 +195,29 @@ public:
 		// note: unlike follow-up requests, the initial request is assumed to have a body.
 		//   if no body field is present, we act as if it is present but empty.
 
-		if(methodHasBody)
+		if(!request.body.isEmpty())
 		{
-			if(!request.body.isEmpty())
-				hreq->writeBody(request.body);
+			if(request.more && !request.headers.contains("content-length"))
+			{
+				log_warning("streamed input requires content-length");
+				QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "length-required"));
+				return;
+			}
 
-			if(!request.more)
-			{
-				bodySent = true;
-				hreq->endBody();
-			}
-			else
-			{
-				// send cts
-				ZurlResponsePacket resp;
-				resp.credits = IDEAL_CREDITS;
-				writeResponse(resp);
-			}
+			hreq->writeBody(request.body);
+		}
+
+		if(!request.more)
+		{
+			bodySent = true;
+			hreq->endBody();
+		}
+		else
+		{
+			// send cts
+			ZurlResponsePacket resp;
+			resp.credits = IDEAL_CREDITS;
+			writeResponse(resp);
 		}
 	}
 
@@ -279,25 +265,22 @@ public:
 		if(request.credits != -1)
 			outCredits += request.credits;
 
-		if(methodHasBody)
+		if(!request.body.isNull())
 		{
-			if(!request.body.isNull())
+			if(bodySent)
 			{
-				if(bodySent)
-				{
-					QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
-					return;
-				}
+				QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
+				return;
+			}
 
-				if(!request.body.isEmpty())
-					hreq->writeBody(request.body);
+			if(!request.body.isEmpty())
+				hreq->writeBody(request.body);
 
-				// the 'more' flag only has significance if body field present
-				if(!request.more)
-				{
-					bodySent = true;
-					hreq->endBody();
-				}
+			// the 'more' flag only has significance if body field present
+			if(!request.more)
+			{
+				bodySent = true;
+				hreq->endBody();
 			}
 		}
 
@@ -531,10 +514,16 @@ private slots:
 		QByteArray condition;
 		switch(hreq->errorCondition())
 		{
-			case HttpRequest::ErrorPolicy:  condition = "policy-violation"; break;
-			case HttpRequest::ErrorConnect: condition = "remote-connection-failed"; break;
-			case HttpRequest::ErrorTls:     condition = "tls-error"; break;
-			case HttpRequest::ErrorTimeout: condition = "connection-timeout"; break;
+			case HttpRequest::ErrorPolicy:
+				condition = "policy-violation"; break;
+			case HttpRequest::ErrorConnect:
+				condition = "remote-connection-failed"; break;
+			case HttpRequest::ErrorTls:
+				condition = "tls-error"; break;
+			case HttpRequest::ErrorTimeout:
+				condition = "connection-timeout"; break;
+			case HttpRequest::ErrorBodyNotAllowed:
+				condition = "content-not-allowed"; break;
 			case HttpRequest::ErrorGeneric:
 			default:
 				condition = "undefined-condition";

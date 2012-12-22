@@ -36,7 +36,8 @@ public:
 		ErrorPolicy,
 		ErrorConnect,
 		ErrorTls,
-		ErrorTimeout
+		ErrorTimeout,
+		ErrorBodyNotAllowed
 	};
 
 	HttpRequest(JDnsShared *dns, QObject *parent = 0);
