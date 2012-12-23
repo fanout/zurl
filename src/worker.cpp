@@ -357,7 +357,7 @@ public:
 			if(resp.code != -1)
 				log_info("OUT id=%s code=%d %d%s", out.id.data(), out.code, out.body.size(), out.more ? " M" : "");
 			else
-				log_info("OUT id=%s %d%s", out.id.data(), out.body.size(), out.more ? " M" : "");
+				log_debug("OUT id=%s %d%s", out.id.data(), out.body.size(), out.more ? " M" : "");
 		}
 
 		if(!quiet)

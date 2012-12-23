@@ -432,10 +432,14 @@ private slots:
 		QByteArray part = TnetString::fromVariant(response);
 		if(!receiver.isEmpty())
 		{
+			log_debug("send: %s", qPrintable(TnetString::variantToString(response, -1)));
+
 			out_sock->write(QList<QByteArray>() << (receiver + ' ' + part));
 		}
 		else
 		{
+			log_debug("send-req: %s", qPrintable(TnetString::variantToString(response, -1)));
+
 			assert(reqHeadersByWorker.contains(w));
 			QList<QByteArray> reqHeaders = reqHeadersByWorker.value(w);
 			in_req_sock->write(QZmq::ReqMessage(reqHeaders, QList<QByteArray>() << part).toRawMessage());
