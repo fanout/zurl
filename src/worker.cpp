@@ -256,6 +256,13 @@ public:
 			return;
 		}
 
+		if(request.cancel)
+		{
+			cleanup();
+			QMetaObject::invokeMethod(q, "finished", Qt::QueuedConnection);
+			return;
+		}
+
 		refreshTimeout();
 
 		inSeq = request.seq;
