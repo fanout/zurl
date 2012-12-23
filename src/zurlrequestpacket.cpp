@@ -29,6 +29,61 @@ ZurlRequestPacket::ZurlRequestPacket() :
 {
 }
 
+QVariant ZurlRequestPacket::toVariant() const
+{
+	QVariantHash obj;
+	obj["id"] = id;
+
+	if(!sender.isEmpty())
+		obj["sender"] = sender;
+
+	if(seq != -1)
+		obj["seq"] = seq;
+
+	if(cancel)
+		obj["cancel"] = true;
+
+	if(!method.isEmpty())
+	{
+		obj["method"] = method.toLatin1();
+		obj["url"] = url.toEncoded();
+
+		QVariantList vheaders;
+		foreach(const HttpHeader &h, headers)
+		{
+			QVariantList vheader;
+			vheader += h.first;
+			vheader += h.second;
+			vheaders += QVariant(vheader);
+		}
+
+		obj["headers"] = vheaders;
+	}
+
+	if(!body.isNull())
+		obj["body"] = body;
+
+	if(more)
+		obj["more"] = true;
+
+	if(stream)
+		obj["stream"] = true;
+
+	if(maxSize != -1)
+		obj["max-size"] = maxSize;
+
+	if(!connectHost.isEmpty())
+		obj["connect-host"] = connectHost.toUtf8();
+
+	if(credits != -1)
+		obj["credits"] = credits;
+
+	if(userData.isValid())
+		obj["user-data"] = userData;
+
+	return obj;
+}
+
 bool ZurlRequestPacket::fromVariant(const QVariant &in)
 {
 	if(in.type() != QVariant::Hash)
@@ -49,7 +104,7 @@ bool ZurlRequestPacket::fromVariant(const QVariant &in)
 		sender = obj["sender"].toByteArray();
 	}
 
-	seq = 0;
+	seq = -1;
 	if(obj.contains("seq"))
 	{
 		if(obj["seq"].type() != QVariant::Int)
@@ -91,7 +146,6 @@ bool ZurlRequestPacket::fromVariant(const QVariant &in)
 		if(obj["headers"].type() != QVariant::List)
 			return false;
 
-		headers.clear();
 		foreach(const QVariant &i, obj["headers"].toList())
 		{
 			QVariantList list = i.toList();
@@ -150,8 +204,6 @@ bool ZurlRequestPacket::fromVariant(const QVariant &in)
 		connectHost = QString::fromUtf8(obj["connect-host"].toByteArray());
 	}
 
-	userData = obj["user-data"];
-
 	credits = -1;
 	if(obj.contains("credits"))
 	{
@@ -160,6 +212,8 @@ bool ZurlRequestPacket::fromVariant(const QVariant &in)
 
 		credits = obj["credits"].toInt();
 	}
+
+	userData = obj["user-data"];
 
 	return true;
 }

@@ -36,12 +36,13 @@ public:
 	HttpHeaders headers;
 	QByteArray body;
 	bool more;
-	QVariant userData;
 	int credits;
+	QVariant userData;
 
 	ZurlResponsePacket();
 
 	QVariant toVariant() const;
+	bool fromVariant(const QVariant &in);
 };
 
 #endif

@@ -38,11 +38,12 @@ public:
 	bool stream;
 	int maxSize;
 	QString connectHost;
-	QVariant userData;
 	int credits;
+	QVariant userData;
 
 	ZurlRequestPacket();
 
+	QVariant toVariant() const;
 	bool fromVariant(const QVariant &in);
 };
 
