@@ -165,6 +165,10 @@ public:
 		QString out_url = settings.value("out_spec").toString();
 		QString in_req_url = settings.value("in_req_spec").toString();
 		config.maxWorkers = settings.value("max_open_requests", -1).toInt();
+		config.sessionBufferSize = settings.value("buffer_size", 200000).toInt();
+		config.sessionTimeout = settings.value("timeout", 600).toInt();
+		int inHwm = settings.value("in_hwm", 1000).toInt();
+		int outHwm = settings.value("out_hwm", 1000).toInt();
 
 		if((!in_url.isEmpty() || !in_stream_url.isEmpty() || !out_url.isEmpty()) && (in_url.isEmpty() || in_stream_url.isEmpty() || out_url.isEmpty()))
 		{
@@ -201,6 +205,9 @@ public:
 		if(!in_url.isEmpty())
 		{
 			in_sock = new QZmq::Socket(QZmq::Socket::Pull, this);
+
+			in_sock->setHwm(inHwm);
+
 			if(!in_sock->bind(in_url))
 			{
 				log_error("unable to bind to in_spec: %s", qPrintable(in_url));
@@ -215,7 +222,10 @@ public:
 		if(!in_stream_url.isEmpty())
 		{
 			in_stream_sock = new QZmq::Socket(QZmq::Socket::Dealer, this);
+
 			in_stream_sock->setIdentity(config.clientId);
+			in_stream_sock->setHwm(inHwm);
+
 			connect(in_stream_sock, SIGNAL(readyRead()), SLOT(in_stream_readyRead()));
 			if(!in_stream_sock->bind(in_stream_url))
 			{
@@ -228,6 +238,10 @@ public:
 		if(!out_url.isEmpty())
 		{
 			out_sock = new QZmq::Socket(QZmq::Socket::Pub, this);
+
+			out_sock->setWriteQueueEnabled(false);
+			out_sock->setHwm(outHwm);
+
 			if(!out_sock->bind(out_url))
 			{
 				log_error("unable to bind to out_spec: %s", qPrintable(out_url));
@@ -239,6 +253,9 @@ public:
 		if(!in_req_url.isEmpty())
 		{
 			in_req_sock = new QZmq::Socket(QZmq::Socket::Router, this);
+
+			in_req_sock->setHwm(inHwm);
+
 			if(!in_req_sock->bind(in_req_url))
 			{
 				log_error("unable to bind to in_req_spec: %s", qPrintable(in_req_url));

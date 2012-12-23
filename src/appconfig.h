@@ -24,12 +24,12 @@
 class AppConfig
 {
 public:
+	QByteArray clientId;
 	QString defaultPolicy;
 	QStringList allowExps, denyExps;
 	int maxWorkers;
-
-	// putting this here for convenience, even though it's not from config
-	QByteArray clientId;
+	int sessionBufferSize;
+	int sessionTimeout;
 };
 
 #endif

@@ -28,9 +28,6 @@
 #include "appconfig.h"
 #include "log.h"
 
-#define SESSION_TIMEOUT 600
-#define IDEAL_CREDITS 200000
-
 class Worker::Private : public QObject
 {
 	Q_OBJECT
@@ -188,7 +185,7 @@ public:
 		timer = new QTimer(this);
 		connect(timer, SIGNAL(timeout()), SLOT(timer_timeout()));
 		timer->setSingleShot(true);
-		timer->start(SESSION_TIMEOUT * 1000);
+		timer->start(config->sessionTimeout * 1000);
 
 		hreq->start(request.method, request.url, headers);
 
@@ -216,7 +213,7 @@ public:
 		{
 			// send cts
 			ZurlResponsePacket resp;
-			resp.credits = IDEAL_CREDITS;
+			resp.credits = config->sessionBufferSize;
 			writeResponse(resp);
 		}
 	}
@@ -445,7 +442,7 @@ public:
 
 	void refreshTimeout()
 	{
-		timer->start(SESSION_TIMEOUT * 1000);
+		timer->start(config->sessionTimeout * 1000);
 	}
 
 private slots:
