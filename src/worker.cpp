@@ -43,6 +43,7 @@ public:
 	bool outStream;
 	QVariant userData;
 	int maxResponseSize;
+	bool ignorePolicies;
 	HttpRequest *hreq;
 	bool quiet;
 	bool sentHeader;
@@ -115,6 +116,8 @@ public:
 		sentHeader = false;
 		stuffToRead = false;
 		bytesReceived = 0;
+
+		ignorePolicies = request.ignorePolicies;
 
 		// streaming only allowed on streaming interface
 		if(mode == Worker::Stream)
@@ -330,6 +333,9 @@ public:
 
 	bool isAllowed(const QString &in) const
 	{
+		if(ignorePolicies)
+			return true;
+
 		if(config->defaultPolicy == "allow")
 			return !checkDeny(in) || checkAllow(in);
 		else
