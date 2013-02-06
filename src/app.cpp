@@ -327,7 +327,7 @@ private slots:
 		workers += w;
 		streamWorkersByRid[rid] = w;
 
-		if(workers.count() >= config.maxWorkers)
+		if(config.maxWorkers != -1 && workers.count() >= config.maxWorkers)
 		{
 			in_valve->close();
 
@@ -413,7 +413,7 @@ private slots:
 		workers += w;
 		reqHeadersByWorker[w] = reqMessage.headers();
 
-		if(workers.count() >= config.maxWorkers)
+		if(config.maxWorkers != -1 && workers.count() >= config.maxWorkers)
 		{
 			in_req_valve->close();
 
