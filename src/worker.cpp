@@ -134,7 +134,7 @@ public:
 			return;
 		}
 
-		log_info("IN id=%s, %s %s", request.id.data(), qPrintable(request.method), qPrintable(request.url.toString()));
+		log_info("IN id=%s, %s %s", request.id.data(), qPrintable(request.method), request.url.toEncoded().data());
 
 		// inbound streaming must start with sequence number of 0
 		if(mode == Worker::Stream && request.more && request.seq != 0)
