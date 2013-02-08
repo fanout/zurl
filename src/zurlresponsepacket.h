@@ -32,7 +32,7 @@ public:
 
 	QByteArray replyAddress;
 	int code;
-	QByteArray status;
+	QByteArray reason;
 	HttpHeaders headers;
 	QByteArray body;
 	bool more;

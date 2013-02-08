@@ -21,7 +21,7 @@ file = open(sys.argv[2], "r").read()
 rid = str(uuid.uuid4())
 outseq = 0
 outcredits = 0
-out_sock.send(tnetstring.dumps({"id": rid, "sender": client_id, "seq": outseq, "method": "POST", "url": sys.argv[1], "headers": [["Content-Length", str(len(file))]], "stream": True, "credits": 200000, "more": True}))
+out_sock.send(tnetstring.dumps({"id": rid, "sender": client_id, "seq": outseq, "method": "POST", "uri": sys.argv[1], "headers": [["Content-Length", str(len(file))]], "stream": True, "credits": 200000, "more": True}))
 outseq += 1
 
 while True:

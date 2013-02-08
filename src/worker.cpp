@@ -126,15 +126,15 @@ public:
 			outStream = false;
 
 		// some required fields
-		if(request.method.isEmpty() || request.url.isEmpty())
+		if(request.method.isEmpty() || request.uri.isEmpty())
 		{
-			log_warning("missing request method or missing url");
+			log_warning("missing request method or missing uri");
 
 			QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
 			return;
 		}
 
-		log_info("IN id=%s, %s %s", request.id.data(), qPrintable(request.method), request.url.toEncoded().data());
+		log_info("IN id=%s, %s %s", request.id.data(), qPrintable(request.method), request.uri.toEncoded().data());
 
 		// inbound streaming must start with sequence number of 0
 		if(mode == Worker::Stream && request.more && request.seq != 0)
@@ -162,7 +162,7 @@ public:
 
 		inSeq = request.seq;
 
-		if(!isAllowed(request.url.host()) || (!request.connectHost.isEmpty() && !isAllowed(request.connectHost)))
+		if(!isAllowed(request.uri.host()) || (!request.connectHost.isEmpty() && !isAllowed(request.connectHost)))
 		{
 			QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "policy-violation"));
 			return;
@@ -190,7 +190,7 @@ public:
 		timer->setSingleShot(true);
 		timer->start(config->sessionTimeout * 1000);
 
-		hreq->start(request.method, request.url, headers);
+		hreq->start(request.method, request.uri, headers);
 
 		// note: unlike follow-up requests, the initial request is assumed to have a body.
 		//   if no body field is present, we act as if it is present but empty.
@@ -382,7 +382,7 @@ public:
 		if(!sentHeader)
 		{
 			resp.code = hreq->responseCode();
-			resp.status = hreq->responseStatus();
+			resp.reason = hreq->responseStatus();
 			resp.headers = hreq->responseHeaders();
 			sentHeader = true;
 		}
