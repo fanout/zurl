@@ -241,15 +241,6 @@ public:
 	//   more significant the closer the request was to succeeding. e.g.
 	//   ErrorTls means the server was actually reached. ErrorPolicy means
 	//   we didn't even attempt to try connecting.
-	//
-	// note that ErrorTimeout is kind of an odd one, as it might get
-	//   occur either during a connect or after a request is already in
-	//   progress. this means a request could actually get performed and
-	//   timeout mid-receive, retried to another server that fails by
-	//   connection refused, and the ErrorConnect would be considered more
-	//   significant even though it is actually further from success in
-	//   this context. but, this seems to be the best we can do with
-	//   QNetworkReply.
 	static int errorPriority(HttpRequest::ErrorCondition e)
 	{
 		if(e == HttpRequest::ErrorTls)
@@ -384,6 +375,13 @@ private slots:
 			return;
 		}
 
+		// Note: it is essential that QNetworkReply::TimeoutError only
+		//   occurs during connect and not after a request has been
+		//   sent. As far as I can tell from reading Qt's code, this
+		//   should be the case.
+
+		bool tryAgain = true;
+
 		HttpRequest::ErrorCondition curError;
 		if(code == QNetworkReply::ConnectionRefusedError)
 			curError = HttpRequest::ErrorConnect;
@@ -392,20 +390,24 @@ private slots:
 		else if(code == QNetworkReply::TimeoutError)
 			curError = HttpRequest::ErrorTimeout;
 		else
+		{
+			tryAgain = false;
 			curError = HttpRequest::ErrorGeneric;
+		}
 
 		if(errorPriority(curError) > errorPriority(mostSignificantError))
 			mostSignificantError = curError;
 
-		// if we started submitting an input body, then we can't retry
-		//   the request
-		if(outdev && outdev->wasAccessed())
+		if(tryAgain)
 		{
+			tryNextAddress();
+		}
+		else
+		{
+			errorCondition = mostSignificantError;
 			emit q->error();
 			return;
 		}
-
-		tryNextAddress();
 	}
 
 	void reply_sslErrors(const QList<QSslError> &errors)
