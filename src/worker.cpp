@@ -545,7 +545,7 @@ private slots:
 
 	void timer_timeout()
 	{
-		respondError("connection-timeout");
+		respondError("session-timeout");
 	}
 };
 
