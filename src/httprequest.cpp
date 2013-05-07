@@ -113,6 +113,8 @@ signals:
 	void bytesTaken(int count);
 };
 
+static QNetworkAccessManager *g_nam = 0;
+
 class HttpRequest::Private : public QObject
 {
 	Q_OBJECT
@@ -123,7 +125,6 @@ public:
 	QString connectHost;
 	bool ignoreTlsErrors;
 	HttpRequest::ErrorCondition errorCondition;
-	QNetworkAccessManager *nam;
 	QString method;
 	QUrl url;
 	HttpHeaders headers;
@@ -146,7 +147,8 @@ public:
 		mostSignificantError(HttpRequest::ErrorGeneric),
 		ignoreEnd(false)
 	{
-		nam = new QNetworkAccessManager(this);
+		if(!g_nam)
+			g_nam = new QNetworkAccessManager(QCoreApplication::instance());
 	}
 
 	~Private()
@@ -164,9 +166,6 @@ public:
 			outdev->setParent(0);
 			outdev->deleteLater();
 		}
-
-		nam->setParent(0);
-		nam->deleteLater();
 	}
 
 	void start(const QString &_method, const QUrl &_url, const HttpHeaders &_headers)
@@ -306,17 +305,17 @@ private slots:
 		request.setAttribute(QNetworkRequest::DoNotBufferUploadDataAttribute, true);
 
 		if(method == "HEAD")
-			reply = nam->head(request);
+			reply = g_nam->head(request);
 		else if(method == "GET")
-			reply = nam->get(request);
+			reply = g_nam->get(request);
 		else if(method == "POST")
-			reply = nam->post(request, outdev);
+			reply = g_nam->post(request, outdev);
 		else if(method == "PUT")
-			reply = nam->put(request, outdev);
+			reply = g_nam->put(request, outdev);
 		else if(method == "DELETE")
-			reply = nam->deleteResource(request);
+			reply = g_nam->deleteResource(request);
 		else if(method == "OPTIONS")
-			reply = nam->sendCustomRequest(request, "OPTIONS");
+			reply = g_nam->sendCustomRequest(request, "OPTIONS");
 		else
 		{
 			errorCondition = HttpRequest::ErrorGeneric;
@@ -414,7 +413,10 @@ private slots:
 
 	void reply_sslErrors(const QList<QSslError> &errors)
 	{
-		log_debug("HttpRequest::reply_sslErrors, count: %d", errors.count());
+		QStringList strs;
+		foreach(const QSslError e, errors)
+			strs += e.errorString();
+		log_debug("HttpRequest::reply_sslErrors: %s", qPrintable(strs.join(", ")));
 
 		// we'll almost always get a host mismatch error since we replace the host with ip address
 		bool hostMismatchOk = false;
