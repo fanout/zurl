@@ -177,6 +177,8 @@ public:
 		if(!request.connectHost.isEmpty())
 			hreq->setConnectHost(request.connectHost);
 
+		hreq->setIgnoreTlsErrors(request.ignoreTlsErrors);
+
 		if(request.credits != -1)
 			outCredits += request.credits;
 

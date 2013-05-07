@@ -121,6 +121,7 @@ public:
 	HttpRequest *q;
 	JDnsShared *dns;
 	QString connectHost;
+	bool ignoreTlsErrors;
 	HttpRequest::ErrorCondition errorCondition;
 	QNetworkAccessManager *nam;
 	QString method;
@@ -138,6 +139,7 @@ public:
 		QObject(_q),
 		q(_q),
 		dns(_dns),
+		ignoreTlsErrors(false),
 		outdev(0),
 		reply(0),
 		bytesReceived(0),
@@ -415,14 +417,18 @@ private slots:
 		log_debug("HttpRequest::reply_sslErrors, count: %d", errors.count());
 
 		// we'll almost always get a host mismatch error since we replace the host with ip address
+		bool hostMismatchOk = false;
 		if(errors.count() == 1 && errors[0].error() == QSslError::HostNameMismatch)
 		{
 			// in that case, do our own host matching using qca
 			QSslCertificate qtCert = reply->sslConfiguration().peerCertificate();
 			QCA::Certificate qcaCert = QCA::Certificate::fromDER(qtCert.toDer());
 			if(qcaCert.matchesHostName(url.host()))
-				reply->ignoreSslErrors();
+				hostMismatchOk = true;
 		}
+
+		if(ignoreTlsErrors || hostMismatchOk)
+			reply->ignoreSslErrors();
 	}
 
 	void outdev_bytesTaken(int count)
@@ -445,6 +451,11 @@ HttpRequest::~HttpRequest()
 void HttpRequest::setConnectHost(const QString &host)
 {
 	d->connectHost = host;
+}
+
+void HttpRequest::setIgnoreTlsErrors(bool on)
+{
+	d->ignoreTlsErrors = on;
 }
 
 void HttpRequest::start(const QString &method, const QUrl &url, const HttpHeaders &headers)
