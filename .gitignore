@@ -1,0 +1,14 @@
+*.swp
+*~
+qrc_*
+*.moc
+*.o
+*.pdb
+ui_*
+moc_*
+*.pyc
+/Makefile
+conf.log
+conf.pri
+zurl
+src/Makefile
