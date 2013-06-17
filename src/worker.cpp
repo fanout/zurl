@@ -23,8 +23,8 @@
 #include <QPointer>
 #include "jdnsshared.h"
 #include "httprequest.h"
-#include "zurlrequestpacket.h"
-#include "zurlresponsepacket.h"
+#include "zhttprequestpacket.h"
+#include "zhttpresponsepacket.h"
 #include "appconfig.h"
 #include "log.h"
 
@@ -85,7 +85,7 @@ public:
 	{
 		outSeq = 0;
 
-		ZurlRequestPacket request;
+		ZhttpRequestPacket request;
 		if(!request.fromVariant(vrequest))
 		{
 			log_warning("failed to parse zurl request");
@@ -93,8 +93,8 @@ public:
 			QVariantHash vhash = vrequest.toHash();
 			rid = vhash.value("id").toByteArray();
 			assert(!rid.isEmpty()); // app layer ensures this
-			receiver = vhash.value("sender").toByteArray();
-			bool cancel = vhash.value("cancel").toBool();
+			receiver = vhash.value("from").toByteArray();
+			bool cancel = (vhash.value("type").toByteArray() == "cancel");
 			if(!receiver.isEmpty() && !cancel)
 			{
 				QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
@@ -109,7 +109,7 @@ public:
 		}
 
 		rid = request.id;
-		receiver = request.sender;
+		receiver = request.from;
 		outCredits = 0;
 		userData = request.userData;
 		quiet = false;
@@ -217,7 +217,8 @@ public:
 		else
 		{
 			// send cts
-			ZurlResponsePacket resp;
+			ZhttpResponsePacket resp;
+			resp.type = ZhttpResponsePacket::Credit;
 			resp.credits = config->sessionBufferSize;
 			writeResponse(resp);
 		}
@@ -225,11 +226,11 @@ public:
 
 	void write(const QVariant &vrequest)
 	{
-		ZurlRequestPacket request;
+		ZhttpRequestPacket request;
 		if(!request.fromVariant(vrequest))
 		{
 			QVariantHash vhash = vrequest.toHash();
-			if(!vhash["cancel"].toBool())
+			if(vhash["type"].toByteArray() != "cancel")
 			{
 				QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
 			}
@@ -245,7 +246,7 @@ public:
 		// cancel session if a wrong sequenced packet is received
 		if(inSeq == -1 || request.seq == -1 || request.seq != inSeq + 1)
 		{
-			if(!request.cancel)
+			if(request.type != ZhttpRequestPacket::Cancel)
 			{
 				QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "cancel"));
 			}
@@ -258,7 +259,7 @@ public:
 			return;
 		}
 
-		if(request.cancel)
+		if(request.type == ZhttpRequestPacket::Cancel)
 		{
 			cleanup();
 			QMetaObject::invokeMethod(q, "finished", Qt::QueuedConnection);
@@ -274,7 +275,7 @@ public:
 		if(request.credits != -1)
 			outCredits += request.credits;
 
-		if(!request.body.isNull())
+		if(request.type == ZhttpRequestPacket::Data)
 		{
 			if(bodySent)
 			{
@@ -345,22 +346,22 @@ public:
 	}
 
 	// emits signals, but safe to delete after
-	void writeResponse(const ZurlResponsePacket &resp)
+	void writeResponse(const ZhttpResponsePacket &resp)
 	{
-		ZurlResponsePacket out = resp;
+		ZhttpResponsePacket out = resp;
+		out.from = config->clientId;
 		out.id = rid;
-		if(!out.isError)
-			out.seq = outSeq++;
-		out.replyAddress = config->clientId;
+		out.type = ZhttpResponsePacket::Data;
+		out.seq = outSeq++;
 		out.userData = userData;
 
 		// only log if error or body packet. this way we don't log cts or credits-only packets
 
-		if(out.isError)
+		if(out.type == ZhttpResponsePacket::Error)
 		{
 			log_info("OUT ERR id=%s condition=%s", out.id.data(), out.condition.data());
 		}
-		else if(!out.body.isNull())
+		else if(out.type == ZhttpResponsePacket::Data)
 		{
 			if(resp.code != -1)
 				log_info("OUT id=%s code=%d %d%s", out.id.data(), out.code, out.body.size(), out.more ? " M" : "");
@@ -379,7 +380,8 @@ public:
 
 		stuffToRead = false;
 
-		ZurlResponsePacket resp;
+		ZhttpResponsePacket resp;
+		resp.type = ZhttpResponsePacket::Data;
 
 		if(!sentHeader)
 		{
@@ -458,8 +460,8 @@ private slots:
 	{
 		QPointer<QObject> self = this;
 
-		ZurlResponsePacket resp;
-		resp.isError = true;
+		ZhttpResponsePacket resp;
+		resp.type = ZhttpResponsePacket::Error;
 		resp.condition = condition;
 
 		writeResponse(resp);
@@ -515,7 +517,8 @@ private slots:
 	{
 		if(!bodySent)
 		{
-			ZurlResponsePacket resp;
+			ZhttpResponsePacket resp;
+			resp.type = ZhttpResponsePacket::Credit;
 			resp.credits = count;
 			writeResponse(resp);
 		}

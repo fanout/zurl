@@ -1,3 +1,6 @@
 [submodule "src/qzmq"]
 	path = src/qzmq
 	url = git://github.com/jkarneges/qzmq.git
+[submodule "src/common"]
+	path = src/common
+	url = git://github.com/fanout/common.git

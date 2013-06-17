@@ -1,3 +1,5 @@
+COMMON_DIR = $$PWD/common
+
 INCLUDEPATH += $$PWD/jdns
 include(jdns/jdns.pri)
 
@@ -8,28 +10,33 @@ SOURCES += $$PWD/jdnsshared/jdnsshared.cpp
 INCLUDEPATH += $$PWD/qzmq/src
 include(qzmq/src/src.pri)
 
+INCLUDEPATH += $$COMMON_DIR
 DEFINES += NO_IRISNET
-HEADERS += $$PWD/processquit.h
-SOURCES += $$PWD/processquit.cpp
 
 HEADERS += \
-	$$PWD/tnetstring.h \
-	$$PWD/httpheaders.h \
-	$$PWD/zurlrequestpacket.h \
-	$$PWD/zurlresponsepacket.h \
+	$$COMMON_DIR/processquit.h \
+	$$COMMON_DIR/tnetstring.h \
+	$$COMMON_DIR/httpheaders.h \
+	$$COMMON_DIR/zhttprequestpacket.h \
+	$$COMMON_DIR/zhttpresponsepacket.h \
+	$$COMMON_DIR/log.h
+
+SOURCES += \
+	$$COMMON_DIR/processquit.cpp \
+	$$COMMON_DIR/tnetstring.cpp \
+	$$COMMON_DIR/httpheaders.cpp \
+	$$COMMON_DIR/zhttprequestpacket.cpp \
+	$$COMMON_DIR/zhttpresponsepacket.cpp \
+	$$COMMON_DIR/log.cpp
+
+HEADERS += \
 	$$PWD/httprequest.h \
-	$$PWD/log.h \
 	$$PWD/appconfig.h \
 	$$PWD/worker.h \
 	$$PWD/app.h
 
 SOURCES += \
-	$$PWD/tnetstring.cpp \
-	$$PWD/httpheaders.cpp \
-	$$PWD/zurlrequestpacket.cpp \
-	$$PWD/zurlresponsepacket.cpp \
 	$$PWD/httprequest.cpp \
-	$$PWD/log.cpp \
 	$$PWD/worker.cpp \
 	$$PWD/app.cpp \
 	$$PWD/main.cpp

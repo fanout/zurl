@@ -30,7 +30,7 @@
 #include "qzmqvalve.h"
 #include "processquit.h"
 #include "tnetstring.h"
-#include "zurlresponsepacket.h"
+#include "zhttpresponsepacket.h"
 #include "appconfig.h"
 #include "log.h"
 #include "worker.h"
@@ -279,9 +279,9 @@ public:
 	//   cases we need to be able to respond with an error at this layer
 	void respondError(const QByteArray &receiver, const QByteArray &rid, const QByteArray &condition)
 	{
-		ZurlResponsePacket out;
+		ZhttpResponsePacket out;
 		out.id = rid;
-		out.isError = true;
+		out.type = ZhttpResponsePacket::Error;
 		out.condition = condition;
 		QByteArray part = TnetString::fromVariant(out.toVariant());
 		out_sock->write(QList<QByteArray>() << (receiver + ' ' + part));
