@@ -376,10 +376,10 @@ private slots:
 		Worker *w = streamWorkersByRid.value(rid);
 		if(!w)
 		{
-			QByteArray receiver = vhash.value("sender").toByteArray();
-			bool cancel = vhash.value("cancel").toBool();
-			if(!receiver.isEmpty() && !cancel)
-				respondError(receiver, rid, "cancel");
+			QByteArray from = vhash.value("from").toByteArray();
+			QByteArray type = vhash.value("type").toByteArray();
+			if(!from.isEmpty() && type != "error" && type != "cancel")
+				respondError(from, rid, "cancel");
 
 			return;
 		}

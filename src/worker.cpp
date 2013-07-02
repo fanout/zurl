@@ -25,8 +25,11 @@
 #include "httprequest.h"
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
-#include "appconfig.h"
+#include "bufferlist.h"
 #include "log.h"
+#include "appconfig.h"
+
+#define SESSION_EXPIRE 60000
 
 class Worker::Private : public QObject
 {
@@ -36,7 +39,7 @@ public:
 	Worker *q;
 	JDnsShared *dns;
 	AppConfig *config;
-	QByteArray receiver;
+	QByteArray toAddress;
 	QByteArray rid;
 	int inSeq, outSeq;
 	int outCredits;
@@ -49,9 +52,12 @@ public:
 	bool sentHeader;
 	bool bodySent;
 	bool stuffToRead;
-	QByteArray inbuf; // for single mode
+	BufferList inbuf; // for single mode
 	int bytesReceived;
-	QTimer *timer;
+	bool pendingSend;
+	QTimer *expireTimer;
+	QTimer *httpExpireTimer;
+	QTimer *keepAliveTimer;
 
 	Private(JDnsShared *_dns, AppConfig *_config, Worker *_q) :
 		QObject(_q),
@@ -59,7 +65,10 @@ public:
 		dns(_dns),
 		config(_config),
 		hreq(0),
-		timer(0)
+		pendingSend(false),
+		expireTimer(0),
+		httpExpireTimer(0),
+		keepAliveTimer(0)
 	{
 	}
 
@@ -72,18 +81,36 @@ public:
 		delete hreq;
 		hreq = 0;
 
-		if(timer)
+		if(expireTimer)
 		{
-			timer->disconnect(this);
-			timer->setParent(0);
-			timer->deleteLater();
-			timer = 0;
+			expireTimer->disconnect(this);
+			expireTimer->setParent(0);
+			expireTimer->deleteLater();
+			expireTimer = 0;
+		}
+
+		if(httpExpireTimer)
+		{
+			httpExpireTimer->disconnect(this);
+			httpExpireTimer->setParent(0);
+			httpExpireTimer->deleteLater();
+			httpExpireTimer = 0;
+		}
+
+		if(keepAliveTimer)
+		{
+			keepAliveTimer->disconnect(this);
+			keepAliveTimer->setParent(0);
+			keepAliveTimer->deleteLater();
+			keepAliveTimer = 0;
 		}
 	}
 
 	void start(const QVariant &vrequest, Mode mode)
 	{
 		outSeq = 0;
+		outCredits = 0;
+		quiet = false;
 
 		ZhttpRequestPacket request;
 		if(!request.fromVariant(vrequest))
@@ -93,9 +120,9 @@ public:
 			QVariantHash vhash = vrequest.toHash();
 			rid = vhash.value("id").toByteArray();
 			assert(!rid.isEmpty()); // app layer ensures this
-			receiver = vhash.value("from").toByteArray();
-			bool cancel = (vhash.value("type").toByteArray() == "cancel");
-			if(!receiver.isEmpty() && !cancel)
+			toAddress = vhash.value("from").toByteArray();
+			QByteArray type = vhash.value("type").toByteArray();
+			if(!toAddress.isEmpty() && type != "error" && type != "cancel")
 			{
 				QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
 			}
@@ -109,10 +136,8 @@ public:
 		}
 
 		rid = request.id;
-		receiver = request.from;
-		outCredits = 0;
+		toAddress = request.from;
 		userData = request.userData;
-		quiet = false;
 		sentHeader = false;
 		stuffToRead = false;
 		bytesReceived = 0;
@@ -146,7 +171,7 @@ public:
 		}
 
 		// fire and forget
-		if(mode == Worker::Stream && receiver.isEmpty())
+		if(mode == Worker::Stream && toAddress.isEmpty())
 			quiet = true;
 
 		// can't use these two together
@@ -176,6 +201,8 @@ public:
 		maxResponseSize = request.maxSize;
 		if(!request.connectHost.isEmpty())
 			hreq->setConnectHost(request.connectHost);
+		if(request.connectPort != -1)
+			request.uri.setPort(request.connectPort);
 
 		hreq->setIgnoreTlsErrors(request.ignoreTlsErrors);
 
@@ -187,10 +214,19 @@ public:
 		if((request.method == "POST" || request.method == "PUT") && (!headers.contains("content-length") || !request.more))
 			headers += HttpHeader("Content-Length", QByteArray::number(request.body.size()));
 
-		timer = new QTimer(this);
-		connect(timer, SIGNAL(timeout()), SLOT(timer_timeout()));
-		timer->setSingleShot(true);
-		timer->start(config->sessionTimeout * 1000);
+		expireTimer = new QTimer(this);
+		connect(expireTimer, SIGNAL(timeout()), SLOT(expire_timeout()));
+		expireTimer->setSingleShot(true);
+		expireTimer->start(SESSION_EXPIRE);
+
+		httpExpireTimer = new QTimer(this);
+		connect(httpExpireTimer, SIGNAL(timeout()), SLOT(httpExpire_timeout()));
+		httpExpireTimer->setSingleShot(true);
+		httpExpireTimer->start(config->sessionTimeout * 1000);
+
+		keepAliveTimer = new QTimer(this);
+		connect(keepAliveTimer, SIGNAL(timeout()), SLOT(keepAlive_timeout()));
+		keepAliveTimer->start(SESSION_EXPIRE / 2);
 
 		hreq->start(request.method, request.uri, headers);
 
@@ -351,7 +387,6 @@ public:
 		ZhttpResponsePacket out = resp;
 		out.from = config->clientId;
 		out.id = rid;
-		out.type = ZhttpResponsePacket::Data;
 		out.seq = outSeq++;
 		out.userData = userData;
 
@@ -370,14 +405,35 @@ public:
 		}
 
 		if(!quiet)
-			emit q->readyRead(receiver, out.toVariant());
+			emit q->readyRead(toAddress, out.toVariant());
 	}
 
+	void doSend()
+	{
+		if(!pendingSend)
+		{
+			pendingSend = true;
+			QMetaObject::invokeMethod(this, "trySend", Qt::QueuedConnection);
+		}
+	}
+
+	void refreshTimeout()
+	{
+		expireTimer->start(SESSION_EXPIRE);
+	}
+
+	void refreshHttpTimeout()
+	{
+		httpExpireTimer->start(config->sessionTimeout * 1000);
+	}
+
+private slots:
 	// emits signals, but safe to delete after
 	void trySend()
 	{
 		QPointer<QObject> self = this;
 
+		pendingSend = false;
 		stuffToRead = false;
 
 		ZhttpResponsePacket resp;
@@ -413,10 +469,7 @@ public:
 				}
 			}
 
-			if(!buf.isNull())
-				resp.body = buf;
-			else
-				resp.body = "";
+			resp.body = buf;
 
 			bytesReceived += resp.body.size();
 
@@ -430,13 +483,7 @@ public:
 		}
 		else
 		{
-			if(!inbuf.isNull())
-			{
-				resp.body = inbuf;
-				inbuf.clear();
-			}
-			else
-				resp.body = "";
+			resp.body = inbuf.take();
 		}
 
 		writeResponse(resp);
@@ -450,12 +497,6 @@ public:
 		}
 	}
 
-	void refreshTimeout()
-	{
-		timer->start(config->sessionTimeout * 1000);
-	}
-
-private slots:
 	void respondError(const QByteArray &condition)
 	{
 		QPointer<QObject> self = this;
@@ -480,7 +521,7 @@ private slots:
 
 	void req_readyRead()
 	{
-		refreshTimeout();
+		refreshHttpTimeout();
 
 		stuffToRead = true;
 
@@ -510,7 +551,8 @@ private slots:
 				return;
 		}
 
-		trySend();
+		// this will defer for a cycle, to pick up a potential disconnect as well
+		doSend();
 	}
 
 	void req_bytesWritten(int count)
@@ -548,9 +590,22 @@ private slots:
 		respondError(condition);
 	}
 
-	void timer_timeout()
+	void expire_timeout()
+	{
+		cleanup();
+		emit q->finished();
+	}
+
+	void httpExpire_timeout()
 	{
 		respondError("session-timeout");
+	}
+
+	void keepAlive_timeout()
+	{
+		ZhttpResponsePacket resp;
+		resp.type = ZhttpResponsePacket::KeepAlive;
+		writeResponse(resp);
 	}
 };
 
