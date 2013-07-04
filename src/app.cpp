@@ -277,12 +277,11 @@ public:
 
 	// normally responses are handled by Workers, but in some routing
 	//   cases we need to be able to respond with an error at this layer
-	void respondError(const QByteArray &receiver, const QByteArray &rid, const QByteArray &condition)
+	void respondCancel(const QByteArray &receiver, const QByteArray &rid)
 	{
 		ZhttpResponsePacket out;
 		out.id = rid;
-		out.type = ZhttpResponsePacket::Error;
-		out.condition = condition;
+		out.type = ZhttpResponsePacket::Cancel;
 		QByteArray part = TnetString::fromVariant(out.toVariant());
 		out_sock->write(QList<QByteArray>() << (receiver + ' ' + part));
 	}
@@ -379,7 +378,7 @@ private slots:
 			QByteArray from = vhash.value("from").toByteArray();
 			QByteArray type = vhash.value("type").toByteArray();
 			if(!from.isEmpty() && type != "error" && type != "cancel")
-				respondError(from, rid, "cancel");
+				respondCancel(from, rid);
 
 			return;
 		}

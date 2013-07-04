@@ -284,7 +284,7 @@ public:
 		{
 			if(request.type != ZhttpRequestPacket::Cancel)
 			{
-				QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "cancel"));
+				QMetaObject::invokeMethod(this, "respondCancel", Qt::QueuedConnection);
 			}
 			else
 			{
@@ -504,6 +504,21 @@ private slots:
 		ZhttpResponsePacket resp;
 		resp.type = ZhttpResponsePacket::Error;
 		resp.condition = condition;
+
+		writeResponse(resp);
+		if(!self)
+			return;
+
+		cleanup();
+		emit q->finished();
+	}
+
+	void respondCancel()
+	{
+		QPointer<QObject> self = this;
+
+		ZhttpResponsePacket resp;
+		resp.type = ZhttpResponsePacket::Cancel;
 
 		writeResponse(resp);
 		if(!self)
