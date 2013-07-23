@@ -28,6 +28,9 @@
 
 #define BUFFER_SIZE 200000
 
+// workaround for earlier curl versions
+#define UNPAUSE_WORKAROUND 1
+
 static const char *socketActionToString(int x)
 {
 	switch(x)
@@ -295,7 +298,6 @@ public:
 			memcpy(p, buf.data(), buf.size());
 			newlyWritten += buf.size();
 			log_debug("readFunction: providing %d bytes", buf.size());
-			QMetaObject::invokeMethod(this, "updated", Qt::QueuedConnection);
 			update();
 			return buf.size();
 		}
@@ -611,7 +613,11 @@ public slots:
 	{
 		pendingUpdate = false;
 
+#ifdef UNPAUSE_WORKAROUND
 		doSocketAction(true, 0, 0);
+#else
+		doSocketAction(false, CURL_SOCKET_TIMEOUT, 0);
+#endif
 	}
 };
 
@@ -735,10 +741,9 @@ public:
 
 			if(conn->pauseBits & CURLPAUSE_SEND)
 			{
+				log_debug("send unpausing");
 				conn->pauseBits &= ~CURLPAUSE_SEND;
 				curl_easy_pause(conn->easy, conn->pauseBits);
-
-				// kick the engine
 				g_man->update();
 			}
 		}
@@ -761,11 +766,10 @@ public:
 		{
 			if(conn->pauseBits & CURLPAUSE_SEND)
 			{
+				log_debug("send unpausing");
 				conn->outFinished = true;
 				conn->pauseBits &= ~CURLPAUSE_SEND;
 				curl_easy_pause(conn->easy, conn->pauseBits);
-
-				// kick the engine
 				g_man->update();
 			}
 		}
@@ -785,10 +789,9 @@ public:
 
 			if(conn->pauseBits & CURLPAUSE_RECV)
 			{
+				log_debug("recv unpausing");
 				conn->pauseBits &= ~CURLPAUSE_RECV;
 				curl_easy_pause(conn->easy, conn->pauseBits);
-
-				// kick the engine
 				g_man->update();
 			}
 
@@ -870,7 +873,7 @@ private slots:
 		curl_multi_add_handle(g_man->multi, conn->easy);
 
 		// kick the engine
-		g_man->update();
+		g_man->doSocketAction(false, CURL_SOCKET_TIMEOUT, 0);
 	}
 
 	void dreq_resultsReady()
