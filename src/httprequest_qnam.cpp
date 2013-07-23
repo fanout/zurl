@@ -126,7 +126,7 @@ public:
 	bool ignoreTlsErrors;
 	HttpRequest::ErrorCondition errorCondition;
 	QString method;
-	QUrl url;
+	QUrl uri;
 	HttpHeaders headers;
 	ReqBodyDevice *outdev;
 	QString host;
@@ -168,10 +168,10 @@ public:
 		}
 	}
 
-	void start(const QString &_method, const QUrl &_url, const HttpHeaders &_headers)
+	void start(const QString &_method, const QUrl &_uri, const HttpHeaders &_headers)
 	{
 		method = _method;
-		url = _url;
+		uri = _uri;
 		headers = _headers;
 
 		if(method == "POST" || method == "PUT")
@@ -222,7 +222,7 @@ public:
 		if(!connectHost.isEmpty())
 			host = connectHost;
 		else
-			host = url.host();
+			host = uri.host();
 
 		QHostAddress addr(host);
 		if(!addr.isNull())
@@ -276,10 +276,10 @@ private slots:
 			return;
 
 		QNetworkRequest request;
-		QUrl tmpUrl = url;
+		QUrl tmpUrl = uri;
 		tmpUrl.setHost(addr.toString());
 		request.setUrl(tmpUrl);
-		request.setRawHeader("Host", url.host().toUtf8());
+		request.setRawHeader("Host", uri.host().toUtf8());
 
 		bool haveContentType = false;
 		bool haveContentLength = false;
@@ -425,7 +425,7 @@ private slots:
 			// in that case, do our own host matching using qca
 			QSslCertificate qtCert = reply->sslConfiguration().peerCertificate();
 			QCA::Certificate qcaCert = QCA::Certificate::fromDER(qtCert.toDer());
-			if(qcaCert.matchesHostName(url.host()))
+			if(qcaCert.matchesHostName(uri.host()))
 				hostMismatchOk = true;
 		}
 
@@ -460,9 +460,9 @@ void HttpRequest::setIgnoreTlsErrors(bool on)
 	d->ignoreTlsErrors = on;
 }
 
-void HttpRequest::start(const QString &method, const QUrl &url, const HttpHeaders &headers)
+void HttpRequest::start(const QString &method, const QUrl &uri, const HttpHeaders &headers)
 {
-	d->start(method, url, headers);
+	d->start(method, uri, headers);
 }
 
 void HttpRequest::writeBody(const QByteArray &body)
@@ -504,7 +504,7 @@ int HttpRequest::responseCode() const
 		return -1;
 }
 
-QByteArray HttpRequest::responseStatus() const
+QByteArray HttpRequest::responseReason() const
 {
 	if(d->reply)
 		return d->reply->attribute(QNetworkRequest::HttpReasonPhraseAttribute).toByteArray();

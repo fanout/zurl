@@ -5,6 +5,8 @@ QT += network
 TARGET = zurl
 DESTDIR = ..
 
+CONFIG += use_curl
+
 include($$OUT_PWD/../conf.pri)
 include(src.pri)
 

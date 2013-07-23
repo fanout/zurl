@@ -23,7 +23,11 @@
 #include <QUuid>
 #include <QSettings>
 #include <QHostAddress>
+
+#ifdef USE_QNAM
 #include <QtCrypto>
+#endif
+
 #include "jdnsshared.h"
 #include "qzmqsocket.h"
 #include "qzmqreqmessage.h"
@@ -86,12 +90,14 @@ public:
 
 	void start()
 	{
+#ifdef USE_QNAM
 		if(!QCA::isSupported("cert"))
 		{
 			log_error("missing qca \"cert\" feature. install qca-ossl");
 			emit q->quit();
 			return;
 		}
+#endif
 
 		QStringList args = QCoreApplication::instance()->arguments();
 		args.removeFirst();

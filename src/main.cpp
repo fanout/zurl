@@ -17,7 +17,15 @@
 
 #include <QCoreApplication>
 #include <QTimer>
+
+#ifdef USE_CURL
+#include <curl/curl.h>
+#endif
+
+#ifdef USE_QNAM
 #include <QtCrypto>
+#endif
+
 #include "app.h"
 
 class AppMain : public QObject
@@ -47,7 +55,9 @@ signals:
 
 int main(int argc, char **argv)
 {
+#ifdef USE_QNAM
 	QCA::Initializer qcaInit;
+#endif
 	QCoreApplication qapp(argc, argv);
 	AppMain appMain;
 	QObject::connect(&appMain, SIGNAL(quit()), &qapp, SLOT(quit()));

@@ -32,13 +32,22 @@ SOURCES += \
 	$$COMMON_DIR/log.cpp
 
 HEADERS += \
-	$$PWD/httprequest.h \
+	$$PWD/httprequest.h
+
+use_curl {
+	DEFINES += USE_CURL
+	SOURCES += $$PWD/httprequest_curl.cpp
+} else {
+	DEFINES += USE_QNAM
+	SOURCES += $$PWD/httprequest_qnam.cpp
+}
+
+HEADERS += \
 	$$PWD/appconfig.h \
 	$$PWD/worker.h \
 	$$PWD/app.h
 
 SOURCES += \
-	$$PWD/httprequest.cpp \
 	$$PWD/worker.cpp \
 	$$PWD/app.cpp \
 	$$PWD/main.cpp

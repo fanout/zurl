@@ -214,19 +214,22 @@ public:
 		if((request.method == "POST" || request.method == "PUT") && (!headers.contains("content-length") || !request.more))
 			headers += HttpHeader("Content-Length", QByteArray::number(request.body.size()));
 
-		expireTimer = new QTimer(this);
-		connect(expireTimer, SIGNAL(timeout()), SLOT(expire_timeout()));
-		expireTimer->setSingleShot(true);
-		expireTimer->start(SESSION_EXPIRE);
-
 		httpExpireTimer = new QTimer(this);
 		connect(httpExpireTimer, SIGNAL(timeout()), SLOT(httpExpire_timeout()));
 		httpExpireTimer->setSingleShot(true);
 		httpExpireTimer->start(config->sessionTimeout * 1000);
 
-		keepAliveTimer = new QTimer(this);
-		connect(keepAliveTimer, SIGNAL(timeout()), SLOT(keepAlive_timeout()));
-		keepAliveTimer->start(SESSION_EXPIRE / 2);
+		if(mode == Worker::Stream)
+		{
+			expireTimer = new QTimer(this);
+			connect(expireTimer, SIGNAL(timeout()), SLOT(expire_timeout()));
+			expireTimer->setSingleShot(true);
+			expireTimer->start(SESSION_EXPIRE);
+
+			keepAliveTimer = new QTimer(this);
+			connect(keepAliveTimer, SIGNAL(timeout()), SLOT(keepAlive_timeout()));
+			keepAliveTimer->start(SESSION_EXPIRE / 2);
+		}
 
 		hreq->start(request.method, request.uri, headers);
 
@@ -318,6 +321,8 @@ public:
 				QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
 				return;
 			}
+
+			refreshHttpTimeout();
 
 			if(!request.body.isEmpty())
 				hreq->writeBody(request.body);
@@ -442,7 +447,7 @@ private slots:
 		if(!sentHeader)
 		{
 			resp.code = hreq->responseCode();
-			resp.reason = hreq->responseStatus();
+			resp.reason = hreq->responseReason();
 			resp.headers = hreq->responseHeaders();
 			sentHeader = true;
 		}
