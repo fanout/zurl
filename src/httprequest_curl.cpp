@@ -345,7 +345,8 @@ public:
 			else
 			{
 				// if a content-encoding was used, don't provide content-length
-				if(responseHeaders.get("Content-Encoding") != "identity")
+				QByteArray contentEncoding = responseHeaders.get("Content-Encoding");
+				if(!contentEncoding.isEmpty() && contentEncoding != "identity")
 					responseHeaders.removeAll("Content-Length");
 
 				// tell the app we've got the header block
