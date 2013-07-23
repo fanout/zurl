@@ -1,6 +1,6 @@
 Zurl 1.0
 --------
-Date: September 24th, 2012
+Date: July 22nd, 2013
 Author: Justin Karneges <justin@fanout.io>
 Mailing List: http://lists.fanout.io/listinfo.cgi/fanout-users-fanout.io
 
@@ -13,7 +13,7 @@ License:
 Features:
 
   - Request HTTP and HTTPS URLs
-  - Completely event-driven, using JDNS and QNetworkAccessManager
+  - Completely event-driven, using JDNS and Libcurl
   - Handle thousands of simultaneous outbound connections
   - Two access methods: REQ and PUSH/SUB (think Mongrel2 in reverse!)
   - Streaming requests and responses
@@ -23,8 +23,8 @@ Features:
 Requirements:
 
   qt >= 4.7
-  qca >= 2.0 (and a cert-supporting plugin, like qca-ossl)
   libzmq >= 2.0
+  libcurl >= 7.20
 
 If accessing from Git, be sure to pull submodules:
 
