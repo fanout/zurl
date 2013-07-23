@@ -15,10 +15,11 @@ req = dict()
 req["id"] = str(uuid.uuid4())
 req["method"] = "GET"
 req["uri"] = sys.argv[1]
+#req["ignore-tls-errors"] = True
 sock.send(tnetstring.dumps(req))
 
 resp = tnetstring.loads(sock.recv())
-if "error" in resp:
+if "type" in resp and resp["type"] == "error":
 	print "error: %s" % resp["condition"]
 	sys.exit(1)
 
@@ -26,4 +27,7 @@ print "code=%d reason=[%s]" % (resp["code"], resp["reason"])
 for h in resp["headers"]:
 	print "%s: %s" % (h[0], h[1])
 
-print "\n%s" % resp["body"]
+if "body" in resp:
+	print "\n%s" % resp["body"]
+else:
+	print "\n"

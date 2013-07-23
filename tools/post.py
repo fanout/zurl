@@ -15,6 +15,8 @@ in_sock = ctx.socket(zmq.SUB)
 in_sock.setsockopt(zmq.SUBSCRIBE, client_id)
 in_sock.connect("tcp://127.0.0.1:5552")
 
+time.sleep(0.5)
+
 pos = 0
 file = open(sys.argv[2], "r").read()
 
@@ -29,23 +31,25 @@ while True:
 	at = buf.find(" ")
 	receiver = buf[:at]
 	data = tnetstring.loads(buf[at + 1:])
-	print receiver, data
+	print "IN: %s %s" % (receiver, data)
 	if ("type" in data and data["type"] == "error") or ("type" not in data and "more" not in data):
 		break
 	if "credits" in data:
 		outcredits += data["credits"]
-	raddr = data["reply-address"]
+	raddr = data["from"]
 	if "body" in data and len(data["body"]) > 0:
-		out_stream_sock.send_multipart([raddr, "", tnetstring.dumps({"id": rid, "sender": client_id, "seq": outseq, "credits": len(data["body"])})])
+		odata = {"id": rid, "from": client_id, "seq": outseq, "type": "credit", "credits": len(data["body"])}
+		print "OUT: %s" % odata
+		out_stream_sock.send_multipart([raddr, "", tnetstring.dumps(odata)])
 		outseq += 1
 	if pos < len(file) and outcredits > 0:
 		chunk = file[pos:pos + outcredits]
 		outcredits -= len(chunk)
 		pos += len(chunk)
-		odata = {"id": rid, "sender": client_id, "seq": outseq, "body": chunk}
+		odata = {"id": rid, "from": client_id, "seq": outseq, "body": chunk}
 		print len(chunk), pos, len(file)
 		if pos < len(file):
 			odata["more"] = True
+		print "OUT: %s" % odata
 		out_stream_sock.send_multipart([raddr, "", tnetstring.dumps(odata)])
 		outseq += 1
-		print "wrote chunk"
