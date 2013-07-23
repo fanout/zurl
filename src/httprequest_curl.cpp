@@ -207,10 +207,10 @@ public:
 		foreach(const HttpHeader &h, headers)
 		{
 			QByteArray i = h.first + ": " + h.second;
-			curl_slist_append(headersList, i);
+			headersList = curl_slist_append(headersList, i.data());
 		}
 		if(chunked)
-			curl_slist_append(headersList, "Transfer-Encoding: chunked");
+			headersList = curl_slist_append(headersList, "Transfer-Encoding: chunked");
 		curl_easy_setopt(easy, CURLOPT_HTTPHEADER, headersList);
 	}
 
