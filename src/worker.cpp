@@ -193,6 +193,13 @@ public:
 			return;
 		}
 
+		/*if(request.more && !request.headers.contains("Content-Length"))
+		{
+			log_warning("streamed input requires content-length");
+			QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "length-required"));
+			return;
+		}*/
+
 		hreq = new HttpRequest(dns, this);
 		connect(hreq, SIGNAL(nextAddress(const QHostAddress &)), SLOT(req_nextAddress(const QHostAddress &)));
 		connect(hreq, SIGNAL(readyRead()), SLOT(req_readyRead()));
@@ -210,9 +217,28 @@ public:
 			outCredits += request.credits;
 
 		HttpHeaders headers = request.headers;
-		// ensure content-length (or overwrite it, if not streaming input)
-		if((request.method == "POST" || request.method == "PUT") && (!headers.contains("content-length") || !request.more))
-			headers += HttpHeader("Content-Length", QByteArray::number(request.body.size()));
+
+		if(!headers.contains("Content-Length"))
+		{
+			if(request.more)
+			{
+				// ensure chunked encoding
+				headers.removeAll("Transfer-Encoding");
+				headers += HttpHeader("Transfer-Encoding", "chunked");
+			}
+			else
+			{
+				// ensure content-length
+				if(!request.body.isEmpty() ||
+					(request.method != "OPTIONS" &&
+					request.method != "HEAD" &&
+					request.method != "GET" &&
+					request.method != "DELETE"))
+				{
+					headers += HttpHeader("Content-Length", QByteArray::number(request.body.size()));
+				}
+			}
+		}
 
 		httpExpireTimer = new QTimer(this);
 		connect(httpExpireTimer, SIGNAL(timeout()), SLOT(httpExpire_timeout()));
@@ -233,20 +259,8 @@ public:
 
 		hreq->start(request.method, request.uri, headers);
 
-		// note: unlike follow-up requests, the initial request is assumed to have a body.
-		//   if no body field is present, we act as if it is present but empty.
-
 		if(!request.body.isEmpty())
-		{
-			if(request.more && !request.headers.contains("content-length"))
-			{
-				log_warning("streamed input requires content-length");
-				QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "length-required"));
-				return;
-			}
-
 			hreq->writeBody(request.body);
-		}
 
 		if(!request.more)
 		{

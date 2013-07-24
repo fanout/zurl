@@ -212,7 +212,7 @@ public:
 			QByteArray i = h.first + ": " + h.second;
 			headersList = curl_slist_append(headersList, i.data());
 		}
-		if(chunked)
+		if(chunked && !headers.contains("Transfer-Encoding"))
 			headersList = curl_slist_append(headersList, "Transfer-Encoding: chunked");
 		curl_easy_setopt(easy, CURLOPT_HTTPHEADER, headersList);
 	}
