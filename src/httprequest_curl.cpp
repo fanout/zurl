@@ -363,6 +363,7 @@ public:
 				if(at == -1)
 					return -1;
 
+				log_debug("response header: %s", line.data());
 				responseHeaders += HttpHeader(line.mid(0, at), line.mid(at + 2));
 			}
 			else
