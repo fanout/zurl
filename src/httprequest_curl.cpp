@@ -219,6 +219,8 @@ public:
 		}
 		if(chunked && !headers.contains("Transfer-Encoding"))
 			headersList = curl_slist_append(headersList, "Transfer-Encoding: chunked");
+		// disable expect usage as it appears to be buggy
+		curl_slist_append(headersList, "Expect:");
 		curl_easy_setopt(easy, CURLOPT_HTTPHEADER, headersList);
 	}
 
