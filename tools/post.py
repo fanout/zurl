@@ -34,6 +34,12 @@ while True:
 	print "IN: %s %s" % (receiver, data)
 	if ("type" in data and data["type"] == "error") or ("type" not in data and "more" not in data):
 		break
+	if "type" in data and data["type"] == "keep-alive":
+		odata = {"id": rid, "from": client_id, "seq": outseq, "type": "keep-alive"}
+		print "OUT: %s" % odata
+		out_stream_sock.send_multipart([raddr, "", tnetstring.dumps(odata)])
+		outseq += 1
+		continue
 	if "credits" in data:
 		outcredits += data["credits"]
 	raddr = data["from"]
