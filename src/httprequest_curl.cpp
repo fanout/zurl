@@ -169,7 +169,7 @@ public:
 		}
 	}
 
-	void setup(const QUrl &uri, const HttpHeaders &headers, const QHostAddress &connectAddr = QHostAddress(), int connectPort = -1)
+	void setup(const QUrl &uri, const HttpHeaders &_headers, const QHostAddress &connectAddr = QHostAddress(), int connectPort = -1)
 	{
 		assert(!method.isEmpty());
 
@@ -194,6 +194,8 @@ public:
 			curl_easy_setopt(easy, CURLOPT_RESOLVE, dnsCache);
 		}
 
+		HttpHeaders headers = _headers;
+
 		bool chunked = false;
 		if(headers.contains("Content-Length"))
 		{
@@ -202,6 +204,9 @@ public:
 				curl_easy_setopt(easy, CURLOPT_POSTFIELDSIZE_LARGE, content_len);
 			else*/
 				curl_easy_setopt(easy, CURLOPT_INFILESIZE_LARGE, content_len);
+
+			// curl will set this for us
+			headers.removeAll("Content-Length");
 		}
 		else if(expectBody)
 			chunked = true;
