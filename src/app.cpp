@@ -288,7 +288,7 @@ public:
 		ZhttpResponsePacket out;
 		out.id = rid;
 		out.type = ZhttpResponsePacket::Cancel;
-		QByteArray part = TnetString::fromVariant(out.toVariant());
+		QByteArray part = QByteArray("T") + TnetString::fromVariant(out.toVariant());
 		out_sock->write(QList<QByteArray>() << (receiver + ' ' + part));
 	}
 
@@ -301,8 +301,14 @@ private slots:
 			return;
 		}
 
+		if(message[0].length() < 1 || message[0][0] != 'T')
+		{
+			log_warning("received message with invalid format (wrong type), skipping");
+			return;
+		}
+
 		bool ok;
-		QVariant data = TnetString::toVariant(message[0], 0, &ok);
+		QVariant data = TnetString::toVariant(message[0].mid(1), 0, &ok);
 		if(!ok)
 		{
 			log_warning("received message with invalid format (tnetstring parse failed), skipping");
@@ -360,8 +366,14 @@ private slots:
 			return;
 		}
 
+		if(message[1].length() < 1 || message[1][0] != 'T')
+		{
+			log_warning("received message with invalid format (wrong type), skipping");
+			return;
+		}
+
 		bool ok;
-		QVariant data = TnetString::toVariant(message[1], 0, &ok);
+		QVariant data = TnetString::toVariant(message[1].mid(1), 0, &ok);
 		if(!ok)
 		{
 			log_warning("received message with invalid format (tnetstring parse failed), skipping");
@@ -401,8 +413,15 @@ private slots:
 			return;
 		}
 
+		QByteArray msg = reqMessage.content()[0];
+		if(msg.length() < 1 || msg[0] != 'T')
+		{
+			log_warning("received message with invalid format (wrong type), skipping");
+			return;
+		}
+
 		bool ok;
-		QVariant data = TnetString::toVariant(reqMessage.content()[0], 0, &ok);
+		QVariant data = TnetString::toVariant(msg.mid(1), 0, &ok);
 		if(!ok)
 		{
 			log_warning("received message with invalid format (tnetstring parse failed), skipping");
@@ -434,7 +453,7 @@ private slots:
 	{
 		Worker *w = (Worker *)sender();
 
-		QByteArray part = TnetString::fromVariant(response);
+		QByteArray part = QByteArray("T") + TnetString::fromVariant(response);
 		if(!receiver.isEmpty())
 		{
 			log_debug("send: %s", qPrintable(TnetString::variantToString(response, -1)));

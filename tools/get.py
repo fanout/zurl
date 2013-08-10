@@ -16,9 +16,9 @@ req["id"] = str(uuid.uuid4())
 req["method"] = "GET"
 req["uri"] = sys.argv[1]
 #req["ignore-tls-errors"] = True
-sock.send(tnetstring.dumps(req))
+sock.send("T" + tnetstring.dumps(req))
 
-resp = tnetstring.loads(sock.recv())
+resp = tnetstring.loads(sock.recv()[1:])
 if "type" in resp and resp["type"] == "error":
 	print "error: %s" % resp["condition"]
 	sys.exit(1)

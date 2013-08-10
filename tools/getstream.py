@@ -20,14 +20,14 @@ time.sleep(0.5)
 rid = str(uuid.uuid4())
 inseq = 0
 outseq = 0
-out_sock.send(tnetstring.dumps({"from": client_id, "id": rid, "seq": outseq, "method": "GET", "uri": sys.argv[1], "stream": True, "credits": 230000}))
+out_sock.send("T" + tnetstring.dumps({"from": client_id, "id": rid, "seq": outseq, "method": "GET", "uri": sys.argv[1], "stream": True, "credits": 230000}))
 outseq += 1
 
 while True:
 	buf = in_sock.recv()
 	at = buf.find(" ")
 	receiver = buf[:at]
-	indata = tnetstring.loads(buf[at + 1:])
+	indata = tnetstring.loads(buf[at + 2:])
 	if indata["id"] != rid:
 		continue
 	print "IN: %s" % indata

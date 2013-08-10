@@ -23,21 +23,21 @@ file = open(sys.argv[2], "r").read()
 rid = str(uuid.uuid4())
 outseq = 0
 outcredits = 0
-out_sock.send(tnetstring.dumps({"from": client_id, "id": rid, "seq": outseq, "method": "POST", "uri": sys.argv[1], "headers": [["Content-Length", str(len(file))]], "stream": True, "credits": 200000, "more": True}))
+out_sock.send("T" + tnetstring.dumps({"from": client_id, "id": rid, "seq": outseq, "method": "POST", "uri": sys.argv[1], "headers": [["Content-Length", str(len(file))]], "stream": True, "credits": 200000, "more": True}))
 outseq += 1
 
 while True:
 	buf = in_sock.recv()
 	at = buf.find(" ")
 	receiver = buf[:at]
-	data = tnetstring.loads(buf[at + 1:])
+	data = tnetstring.loads(buf[at + 2:])
 	print "IN: %s %s" % (receiver, data)
 	if ("type" in data and data["type"] == "error") or ("type" not in data and "more" not in data):
 		break
 	if "type" in data and data["type"] == "keep-alive":
 		odata = {"id": rid, "from": client_id, "seq": outseq, "type": "keep-alive"}
 		print "OUT: %s" % odata
-		out_stream_sock.send_multipart([raddr, "", tnetstring.dumps(odata)])
+		out_stream_sock.send_multipart([raddr, "", "T" + tnetstring.dumps(odata)])
 		outseq += 1
 		continue
 	if "credits" in data:
@@ -46,7 +46,7 @@ while True:
 	if "body" in data and len(data["body"]) > 0:
 		odata = {"id": rid, "from": client_id, "seq": outseq, "type": "credit", "credits": len(data["body"])}
 		print "OUT: %s" % odata
-		out_stream_sock.send_multipart([raddr, "", tnetstring.dumps(odata)])
+		out_stream_sock.send_multipart([raddr, "", "T" + tnetstring.dumps(odata)])
 		outseq += 1
 	if pos < len(file) and outcredits > 0:
 		chunk = file[pos:pos + outcredits]
@@ -57,5 +57,5 @@ while True:
 		if pos < len(file):
 			odata["more"] = True
 		print "OUT: %s" % odata
-		out_stream_sock.send_multipart([raddr, "", tnetstring.dumps(odata)])
+		out_stream_sock.send_multipart([raddr, "", "T" + tnetstring.dumps(odata)])
 		outseq += 1
