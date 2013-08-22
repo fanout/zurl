@@ -143,7 +143,7 @@ public:
 		else
 			log_setOutputLevel(LOG_LEVEL_INFO);
 
-		QString logFile = options.value("log");
+		QString logFile = options.value("logfile");
 		if(!logFile.isEmpty())
 		{
 			if(!log_setFile(logFile))
