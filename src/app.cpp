@@ -143,9 +143,20 @@ public:
 		else
 			log_setOutputLevel(LOG_LEVEL_INFO);
 
+		QString logFile = options.value("log");
+		if(!logFile.isEmpty())
+		{
+			if(!log_setFile(logFile))
+			{
+				log_error("failed to open log file: %s", qPrintable(logFile));
+				emit q->quit();
+				return;
+			}
+		}
+
 		log_info("starting...");
 
-		QString configFile = options["config"];
+		QString configFile = options.value("config");
 		if(configFile.isEmpty())
 			configFile = "/etc/zurl.conf";
 
