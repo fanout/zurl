@@ -82,6 +82,7 @@ public:
 		in_req_valve(0)
 	{
 		connect(ProcessQuit::instance(), SIGNAL(quit()), SLOT(doQuit()));
+		connect(ProcessQuit::instance(), SIGNAL(hup()), SLOT(reload()));
 	}
 
 	~Private()
@@ -496,6 +497,12 @@ private slots:
 			in_valve->open();
 		if(in_req_valve)
 			in_req_valve->open();
+	}
+
+	void reload()
+	{
+		log_info("reloading");
+		log_rotate();
 	}
 
 	void doQuit()
