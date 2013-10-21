@@ -46,7 +46,7 @@ public:
 	void setConnectHost(const QString &host);
 	void setIgnoreTlsErrors(bool on);
 
-	void start(const QString &method, const QUrl &uri, const HttpHeaders &headers);
+	void start(const QString &method, const QUrl &uri, const HttpHeaders &headers = HttpHeaders());
 
 	// may call this multiple times
 	void writeBody(const QByteArray &body);

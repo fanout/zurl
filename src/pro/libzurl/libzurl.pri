@@ -1,14 +1,17 @@
-COMMON_DIR = $$PWD/common
+SRC_DIR = $$PWD/../..
+COMMON_DIR = $$SRC_DIR/common
 
-INCLUDEPATH += $$PWD/jdns
-include(jdns/jdns.pri)
+INCLUDEPATH += $$SRC_DIR
 
-INCLUDEPATH += $$PWD/jdnsshared
-HEADERS += $$PWD/jdnsshared/jdnsshared.h
-SOURCES += $$PWD/jdnsshared/jdnsshared.cpp
+INCLUDEPATH += $$SRC_DIR/jdns
+include($$SRC_DIR/jdns/jdns.pri)
 
-INCLUDEPATH += $$PWD/qzmq/src
-include(qzmq/src/src.pri)
+INCLUDEPATH += $$SRC_DIR/jdnsshared
+HEADERS += $$SRC_DIR/jdnsshared/jdnsshared.h
+SOURCES += $$SRC_DIR/jdnsshared/jdnsshared.cpp
+
+INCLUDEPATH += $$SRC_DIR/qzmq/src
+include($$SRC_DIR/qzmq/src/src.pri)
 
 INCLUDEPATH += $$COMMON_DIR
 DEFINES += NO_IRISNET
@@ -32,22 +35,19 @@ SOURCES += \
 	$$COMMON_DIR/log.cpp
 
 HEADERS += \
-	$$PWD/httprequest.h
+	$$SRC_DIR/httprequest.h
 
 use_curl {
 	DEFINES += USE_CURL
-	SOURCES += $$PWD/httprequest_curl.cpp
+	SOURCES += $$SRC_DIR/httprequest_curl.cpp
 } else {
 	DEFINES += USE_QNAM
-	SOURCES += $$PWD/httprequest_qnam.cpp
+	SOURCES += $$SRC_DIR/httprequest_qnam.cpp
 }
 
 HEADERS += \
-	$$PWD/appconfig.h \
-	$$PWD/worker.h \
-	$$PWD/app.h
+	$$SRC_DIR/appconfig.h \
+	$$SRC_DIR/worker.h
 
 SOURCES += \
-	$$PWD/worker.cpp \
-	$$PWD/app.cpp \
-	$$PWD/main.cpp
+	$$SRC_DIR/worker.cpp
