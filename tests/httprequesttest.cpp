@@ -30,11 +30,13 @@ class HttpServer : public QObject
 public:
 	QTcpServer *server;
 	QTcpSocket *sock;
+	bool requestParsed;
 
 	HttpServer(QObject *parent = 0) :
 		QObject(parent),
 		server(0),
-		sock(0)
+		sock(0),
+		requestParsed(false)
 	{
 	}
 
@@ -50,6 +52,26 @@ public:
 		return false;
 	}
 
+	void handleRequest(const QByteArray &method, const QByteArray &uri)
+	{
+		Q_UNUSED(method);
+
+		if(uri == "/chunked")
+		{
+			QByteArray body = "hello world\n";
+			QByteArray buf = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
+			buf += QByteArray::number(body.size(), 16).toUpper() + "\r\n" + body + "\r\n";
+			buf += QByteArray::number(0, 16).toUpper() + "\r\n\r\n";
+			sock->write(buf);
+			sock->close();
+		}
+		else
+		{
+			sock->write("HTTP/1.0 200 OK\r\nContent-Length: 12\r\n\r\nhello world\n");
+			sock->close();
+		}
+	}
+
 private slots:
 	void server_newConnection()
 	{
@@ -60,8 +82,26 @@ private slots:
 
 	void sock_readyRead()
 	{
-		sock->write("HTTP/1.0 200 OK\r\nContent-Length: 12\r\n\r\nhello world\n");
-		sock->close();
+		if(!requestParsed)
+		{
+			if(sock->canReadLine())
+			{
+				QByteArray line = sock->readLine();
+				line.truncate(line.count() - 1);
+				int end = line.indexOf(' ');
+				QByteArray method = line.mid(0, end);
+				int start = end + 1;
+				end = line.indexOf(' ', start);
+				QByteArray uri = line.mid(start, end - start);
+				requestParsed = true;
+
+				handleRequest(method, uri);
+			}
+		}
+		else
+		{
+			sock->readAll();
+		}
 	}
 
 	void sock_disconnected()
@@ -70,6 +110,7 @@ private slots:
 		sock->disconnect(this);
 		sock->deleteLater();
 		sock = 0;
+		requestParsed = false;
 	}
 };
 
@@ -80,6 +121,12 @@ class HttpRequestTest : public QObject
 private:
 	HttpServer *server;
 	JDnsShared *dns;
+
+	void waitForSignal(QSignalSpy *spy)
+	{
+		while(spy->isEmpty())
+			QTest::qWait(10);
+	}
 
 private slots:
 	void initTestCase()
@@ -106,10 +153,7 @@ private slots:
 		QSignalSpy spy(&req, SIGNAL(error()));
 		req.start("GET", QUrl("http://nosuchhost:10000/"));
 		req.endBody();
-		while(spy.isEmpty())
-		{
-			QTest::qWait(100);
-		}
+		waitForSignal(&spy);
 
 		QVERIFY(req.errorCondition() == HttpRequest::ErrorConnect);
 	}
@@ -120,10 +164,7 @@ private slots:
 		QSignalSpy spy(&req, SIGNAL(error()));
 		req.start("GET", QUrl("http://localhost:10001/"));
 		req.endBody();
-		while(spy.isEmpty())
-		{
-			QTest::qWait(100);
-		}
+		waitForSignal(&spy);
 
 		QVERIFY(req.errorCondition() == HttpRequest::ErrorConnect);
 	}
@@ -137,7 +178,7 @@ private slots:
 		while(!req.isFinished())
 		{
 			respBody += req.readResponseBody();
-			QTest::qWait(100);
+			QTest::qWait(10);
 		}
 		respBody += req.readResponseBody();
 		HttpHeaders respHeaders = req.responseHeaders();
@@ -146,6 +187,26 @@ private slots:
 		QCOMPARE(req.responseReason(), QByteArray("OK"));
 		QVERIFY(respHeaders.contains("content-length"));
 		QCOMPARE(respHeaders.get("content-length").toInt(), 12);
+		QCOMPARE(respBody, QByteArray("hello world\n"));
+	}
+
+	void requestGetChunked()
+	{
+		HttpRequest req(dns);
+		req.start("GET", QUrl("http://localhost:10000/chunked"), HttpHeaders());
+		req.endBody();
+		QByteArray respBody;
+		while(!req.isFinished())
+		{
+			respBody += req.readResponseBody();
+			QTest::qWait(10);
+		}
+		respBody += req.readResponseBody();
+		HttpHeaders respHeaders = req.responseHeaders();
+
+		QCOMPARE(req.responseCode(), 200);
+		QCOMPARE(req.responseReason(), QByteArray("OK"));
+		QVERIFY(!respHeaders.contains("content-length"));
 		QCOMPARE(respBody, QByteArray("hello world\n"));
 	}
 };
