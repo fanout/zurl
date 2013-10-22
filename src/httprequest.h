@@ -32,6 +32,7 @@ class HttpRequest : public QObject
 public:
 	enum ErrorCondition
 	{
+		ErrorNone,
 		ErrorGeneric,
 		ErrorPolicy,
 		ErrorConnect,

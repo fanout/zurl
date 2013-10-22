@@ -656,6 +656,7 @@ public:
 		q(_q),
 		dns(_dns),
 		ignoreTlsErrors(false),
+		errorCondition(HttpRequest::ErrorNone),
 		mostSignificantError(HttpRequest::ErrorGeneric),
 		ignoreBody(false),
 		conn(0),
@@ -1022,8 +1023,8 @@ int HttpRequest::bytesAvailable() const
 
 bool HttpRequest::isFinished() const
 {
-	if(d->conn)
-		return d->conn->inFinished;
+	if(d->errorCondition != ErrorNone || (d->conn && d->conn->inFinished))
+		return true;
 	else
 		return false;
 }
