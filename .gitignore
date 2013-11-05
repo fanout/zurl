@@ -10,5 +10,5 @@ moc_*
 /Makefile
 conf.log
 conf.pri
-zurl
+/zurl
 src/Makefile
