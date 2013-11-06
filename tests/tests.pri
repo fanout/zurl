@@ -21,7 +21,7 @@ INCLUDEPATH += $$COMMON_DIR
 DEFINES += NO_IRISNET
 
 use_curl {
-        DEFINES += USE_CURL
+	DEFINES += USE_CURL
 } else {
-        DEFINES += USE_QNAM
+	DEFINES += USE_QNAM
 }
