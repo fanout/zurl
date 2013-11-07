@@ -11,7 +11,6 @@ moc_*
 /conf.log
 /conf.pri
 /zurl
-/src/Makefile
 /src/pro/libzurl/Makefile
 /src/pro/zurl/Makefile
 /src/libzurl.a
