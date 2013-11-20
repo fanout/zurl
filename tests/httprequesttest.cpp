@@ -40,16 +40,21 @@ public:
 	{
 	}
 
-	bool listen(int port)
+	bool listen()
 	{
 		server = new QTcpServer(this);
 		connect(server, SIGNAL(newConnection()), SLOT(server_newConnection()));
-		if(server->listen(QHostAddress::Any, port))
+		if(server->listen(QHostAddress::Any, 0))
 			return true;
 
 		delete server;
 		server = 0;
 		return false;
+	}
+
+	int localPort() const
+	{
+		return server->serverPort();
 	}
 
 	void handleRequest(const QByteArray &method, const QByteArray &uri)
@@ -134,7 +139,7 @@ private slots:
 		log_setOutputLevel(LOG_LEVEL_INFO);
 
 		server = new HttpServer(this);
-		server->listen(10000);
+		server->listen();
 
 		dns = new JDnsShared(JDnsShared::UnicastInternet, this);
 		dns->addInterface(QHostAddress::Any);
@@ -151,7 +156,7 @@ private slots:
 	{
 		HttpRequest req(dns);
 		QSignalSpy spy(&req, SIGNAL(error()));
-		req.start("GET", QUrl("http://nosuchhost:10000/"));
+		req.start("GET", QString("http://nosuchhost:%1/").arg(server->localPort()));
 		req.endBody();
 		waitForSignal(&spy);
 
@@ -162,7 +167,7 @@ private slots:
 	{
 		HttpRequest req(dns);
 		QSignalSpy spy(&req, SIGNAL(error()));
-		req.start("GET", QUrl("http://localhost:10001/"));
+		req.start("GET", QString("http://localhost:1/"));
 		req.endBody();
 		waitForSignal(&spy);
 
@@ -172,7 +177,7 @@ private slots:
 	void requestGet()
 	{
 		HttpRequest req(dns);
-		req.start("GET", QUrl("http://localhost:10000/"), HttpHeaders());
+		req.start("GET", QString("http://localhost:%1/").arg(server->localPort()), HttpHeaders());
 		req.endBody();
 		QByteArray respBody;
 		while(!req.isFinished())
@@ -193,7 +198,7 @@ private slots:
 	void requestGetChunked()
 	{
 		HttpRequest req(dns);
-		req.start("GET", QUrl("http://localhost:10000/chunked"), HttpHeaders());
+		req.start("GET", QString("http://localhost:%1/chunked").arg(server->localPort()), HttpHeaders());
 		req.endBody();
 		QByteArray respBody;
 		while(!req.isFinished())
