@@ -8,6 +8,7 @@ SRC_DIR = $$PWD/../src
 DESTDIR = $$TESTS_DIR
 
 LIBS += -L$$SRC_DIR -lzurl
+PRE_TARGETDEPS += $$PWD/../src/libzurl.a
 include($$PWD/../conf.pri)
 
 COMMON_DIR = $$SRC_DIR/common
