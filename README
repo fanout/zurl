@@ -17,7 +17,7 @@ Features:
   - Handle thousands of simultaneous outbound connections
   - Two access methods: REQ and PUSH/SUB (think Mongrel2 in reverse!)
   - Streaming requests and responses
-  - Packet format uses TNetStrings
+  - Packet format uses either JSON or TNetStrings
   - Set access policies (e.g. block requests to 10.*)
 
 Requirements:
@@ -25,6 +25,7 @@ Requirements:
   qt >= 4.7
   libzmq >= 2.0
   libcurl >= 7.20
+  qjson
 
 If accessing from Git, be sure to pull submodules:
 

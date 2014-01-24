@@ -35,10 +35,17 @@ public:
 		Stream  // for PUSH/PUB
 	};
 
-	Worker(JDnsShared *dns, AppConfig *config, QObject *parent = 0);
+	enum Format
+	{
+		TnetStringFormat,
+		JsonFormat
+	};
+
+	Worker(JDnsShared *dns, AppConfig *config, Format format, QObject *parent = 0);
 	~Worker();
 
 	QByteArray rid() const;
+	Format format() const;
 
 	void start(const QVariant &request, Mode mode);
 	void write(const QVariant &request);

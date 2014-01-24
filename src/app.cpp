@@ -28,6 +28,8 @@
 #include <QtCrypto>
 #endif
 
+#include <qjson/serializer.h>
+#include <qjson/parser.h>
 #include "jdnsshared.h"
 #include "qzmqsocket.h"
 #include "qzmqreqmessage.h"
@@ -53,11 +55,126 @@ static void cleanStringList(QStringList *in)
 	}
 }
 
+// return true if item modified
+static bool convertToJsonStyleInPlace(QVariant *in)
+{
+	// Hash -> Map
+	// ByteArray (UTF-8) -> String
+
+	bool changed = false;
+
+	int type = in->type();
+	if(type == QVariant::Hash)
+	{
+		QVariantMap vmap;
+		QVariantHash vhash = in->toHash();
+		QHashIterator<QString, QVariant> it(vhash);
+		while(it.hasNext())
+		{
+			it.next();
+			QVariant i = it.value();
+			convertToJsonStyleInPlace(&i);
+			vmap[it.key()] = i;
+		}
+
+		*in = vmap;
+		changed = true;
+	}
+	else if(type == QVariant::List)
+	{
+		QVariantList vlist = in->toList();
+		for(int n = 0; n < vlist.count(); ++n)
+		{
+			QVariant i = vlist.at(n);
+			if(convertToJsonStyleInPlace(&i))
+			{
+				vlist[n] = i;
+				changed = true;
+			}
+		}
+	}
+	else if(type == QVariant::ByteArray)
+	{
+		*in = QVariant(QString::fromUtf8(in->toByteArray()));
+		changed = true;
+	}
+
+	return changed;
+}
+
+// return true if item modified
+static bool convertFromJsonStyleInPlace(QVariant *in)
+{
+	// Map -> Hash
+	// String -> ByteArray (UTF-8)
+
+	bool changed = false;
+
+	int type = in->type();
+	if(type == QVariant::Map)
+	{
+		QVariantHash vhash;
+		QVariantMap vmap = in->toMap();
+		QMapIterator<QString, QVariant> it(vmap);
+		while(it.hasNext())
+		{
+			it.next();
+			QVariant i = it.value();
+			convertFromJsonStyleInPlace(&i);
+			vhash[it.key()] = i;
+		}
+
+		*in = vhash;
+		changed = true;
+	}
+	else if(type == QVariant::List)
+	{
+		QVariantList vlist = in->toList();
+		for(int n = 0; n < vlist.count(); ++n)
+		{
+			QVariant i = vlist.at(n);
+			if(convertFromJsonStyleInPlace(&i))
+			{
+				vlist[n] = i;
+				changed = true;
+			}
+		}
+	}
+	else if(type == QVariant::String)
+	{
+		*in = QVariant(in->toString().toUtf8());
+		changed = true;
+	}
+
+	return changed;
+}
+
+static QVariant convertToJsonStyle(const QVariant &in)
+{
+	QVariant v = in;
+	convertToJsonStyleInPlace(&v);
+	return v;
+}
+
+static QVariant convertFromJsonStyle(const QVariant &in)
+{
+	QVariant v = in;
+	convertFromJsonStyleInPlace(&v);
+	return v;
+}
+
 class App::Private : public QObject
 {
 	Q_OBJECT
 
 public:
+	enum InputType
+	{
+		InInit,
+		InStream,
+		InReq
+	};
+
 	App *q;
 	JDnsShared *dns;
 	QZmq::Socket *in_sock;
@@ -293,6 +410,121 @@ public:
 		log_info("started");
 	}
 
+	void handleIncoming(InputType type, const QByteArray &message, const QList<QByteArray> &reqHeaders = QList<QByteArray>())
+	{
+		if(message.length() < 1)
+		{
+			log_warning("received message with invalid format (empty), skipping");
+			return;
+		}
+
+		Worker::Format format;
+		if(message[0] == 'T')
+		{
+			format = Worker::TnetStringFormat;
+		}
+		else if(message[0] == 'J')
+		{
+			format = Worker::JsonFormat;
+		}
+		else
+		{
+			log_warning("received message with invalid format (unsupported type), skipping");
+			return;
+		}
+
+		QVariant data;
+		if(format == Worker::TnetStringFormat)
+		{
+			bool ok;
+			data = TnetString::toVariant(message, 1, &ok);
+			if(!ok)
+			{
+				log_warning("received message with invalid format (tnetstring parse failed), skipping");
+				return;
+			}
+		}
+		else // JsonFormat
+		{
+			bool ok;
+			QJson::Parser parser;
+			data = parser.parse(message.mid(1), &ok);
+			if(!ok)
+			{
+				log_warning("received message with invalid format (json parse failed), skipping");
+				return;
+			}
+
+			data = convertFromJsonStyle(data);
+		}
+
+		if(type == InInit)
+			log_debug("recv-init: %s", qPrintable(TnetString::variantToString(data, -1)));
+		else if(type == InStream)
+			log_debug("recv-stream: %s", qPrintable(TnetString::variantToString(data, -1)));
+		else // InReq
+			log_debug("recv-req: %s", qPrintable(TnetString::variantToString(data, -1)));
+
+		QByteArray rid;
+
+		if(type == InInit || type == InStream)
+		{
+			// the in/instream interface requires ids on packets
+			QVariantHash vhash = data.toHash();
+			rid = vhash.value("id").toByteArray();
+			if(rid.isEmpty())
+			{
+				log_warning("received stream message without request id, skipping");
+				return;
+			}
+
+			if(type == InStream)
+			{
+				Worker *w = streamWorkersByRid.value(rid);
+				if(!w)
+				{
+					QByteArray from = vhash.value("from").toByteArray();
+					QByteArray type = vhash.value("type").toByteArray();
+					if(!from.isEmpty() && type != "error" && type != "cancel")
+						respondCancel(from, rid);
+
+					return;
+				}
+
+				w->write(data);
+				return;
+			}
+
+			if(streamWorkersByRid.contains(rid))
+			{
+				log_warning("received request for id already in use, skipping");
+				return;
+			}
+		}
+
+		Worker *w = new Worker(dns, &config, format, this);
+		connect(w, SIGNAL(readyRead(const QByteArray &, const QVariant &)), SLOT(worker_readyRead(const QByteArray &, const QVariant &)));
+		connect(w, SIGNAL(finished()), SLOT(worker_finished()));
+
+		workers += w;
+
+		if(type == InInit)
+			streamWorkersByRid[rid] = w;
+		else // InReq
+			reqHeadersByWorker[w] = reqHeaders;
+
+		if(config.maxWorkers != -1 && workers.count() >= config.maxWorkers)
+		{
+			if(in_valve)
+				in_valve->close();
+
+			if(in_req_valve)
+				in_req_valve->close();
+		}
+
+		w->start(data, (type == InInit ? Worker::Stream : Worker::Single));
+	}
+
 	// normally responses are handled by Workers, but in some routing
 	//   cases we need to be able to respond with an error at this layer
 	void respondCancel(const QByteArray &receiver, const QByteArray &rid)
@@ -313,53 +545,7 @@ private slots:
 			return;
 		}
 
-		if(message[0].length() < 1 || message[0][0] != 'T')
-		{
-			log_warning("received message with invalid format (wrong type), skipping");
-			return;
-		}
-
-		bool ok;
-		QVariant data = TnetString::toVariant(message[0].mid(1), 0, &ok);
-		if(!ok)
-		{
-			log_warning("received message with invalid format (tnetstring parse failed), skipping");
-			return;
-		}
-
-		log_debug("recv: %s", qPrintable(TnetString::variantToString(data, -1)));
-
-		QVariantHash vhash = data.toHash();
-		QByteArray rid = vhash.value("id").toByteArray();
-		if(rid.isEmpty())
-		{
-			log_warning("received stream message without request id, skipping");
-			return;
-		}
-
-		if(streamWorkersByRid.contains(rid))
-		{
-			log_warning("received request for id already in use, skipping");
-			return;
-		}
-
-		Worker *w = new Worker(dns, &config, this);
-		connect(w, SIGNAL(readyRead(const QByteArray &, const QVariant &)), SLOT(worker_readyRead(const QByteArray &, const QVariant &)));
-		connect(w, SIGNAL(finished()), SLOT(worker_finished()));
-
-		workers += w;
-		streamWorkersByRid[rid] = w;
-
-		if(config.maxWorkers != -1 && workers.count() >= config.maxWorkers)
-		{
-			in_valve->close();
-
-			// also close in_req_valve, if we have it
-			if(in_req_valve)
-				in_req_valve->close();
-		}
-
-		w->start(data, Worker::Stream);
+		handleIncoming(InInit, message[0]);
 	}
 
 	void in_stream_readyRead()
@@ -378,42 +564,7 @@ private slots:
 			return;
 		}
 
-		if(message[1].length() < 1 || message[1][0] != 'T')
-		{
-			log_warning("received message with invalid format (wrong type), skipping");
-			return;
-		}
-
-		bool ok;
-		QVariant data = TnetString::toVariant(message[1].mid(1), 0, &ok);
-		if(!ok)
-		{
-			log_warning("received message with invalid format (tnetstring parse failed), skipping");
-			return;
-		}
-
-		log_debug("recv-stream: %s", qPrintable(TnetString::variantToString(data, -1)));
-
-		QVariantHash vhash = data.toHash();
-		QByteArray rid = vhash.value("id").toByteArray();
-		if(rid.isEmpty())
-		{
-			log_warning("received stream message without request id, skipping");
-			return;
-		}
-
-		Worker *w = streamWorkersByRid.value(rid);
-		if(!w)
-		{
-			QByteArray from = vhash.value("from").toByteArray();
-			QByteArray type = vhash.value("type").toByteArray();
-			if(!from.isEmpty() && type != "error" && type != "cancel")
-				respondCancel(from, rid);
-
-			return;
-		}
-
-		w->write(data);
+		handleIncoming(InStream, message[0]);
 	}
 
 	void in_req_readyRead(const QList<QByteArray> &message)
@@ -425,47 +576,25 @@ private slots:
 			return;
 		}
 
-		QByteArray msg = reqMessage.content()[0];
-		if(msg.length() < 1 || msg[0] != 'T')
-		{
-			log_warning("received message with invalid format (wrong type), skipping");
-			return;
-		}
-
-		bool ok;
-		QVariant data = TnetString::toVariant(msg.mid(1), 0, &ok);
-		if(!ok)
-		{
-			log_warning("received message with invalid format (tnetstring parse failed), skipping");
-			return;
-		}
-
-		log_debug("recv-req: %s", qPrintable(TnetString::variantToString(data, -1)));
-
-		Worker *w = new Worker(dns, &config, this);
-		connect(w, SIGNAL(readyRead(const QByteArray &, const QVariant &)), SLOT(worker_readyRead(const QByteArray &, const QVariant &)));
-		connect(w, SIGNAL(finished()), SLOT(worker_finished()));
-
-		workers += w;
-		reqHeadersByWorker[w] = reqMessage.headers();
-
-		if(config.maxWorkers != -1 && workers.count() >= config.maxWorkers)
-		{
-			in_req_valve->close();
-
-			// also close in_valve, if we have it
-			if(in_valve)
-				in_valve->close();
-		}
-
-		w->start(data, Worker::Single);
+		handleIncoming(InReq, reqMessage.content()[0], reqMessage.headers());
 	}
 
 	void worker_readyRead(const QByteArray &receiver, const QVariant &response)
 	{
 		Worker *w = (Worker *)sender();
 
-		QByteArray part = QByteArray("T") + TnetString::fromVariant(response);
+		QByteArray part;
+		Worker::Format format = w->format();
+		if(format == Worker::TnetStringFormat)
+		{
+			part = QByteArray("T") + TnetString::fromVariant(response);
+		}
+		else // JsonFormat
+		{
+			QJson::Serializer serializer;
+			part = QByteArray("J") + serializer.serialize(convertToJsonStyle(response));
+		}
+
 		if(!receiver.isEmpty())
 		{
 			log_debug("send: %s", qPrintable(TnetString::variantToString(response, -1)));

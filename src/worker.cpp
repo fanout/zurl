@@ -39,6 +39,7 @@ public:
 	Worker *q;
 	JDnsShared *dns;
 	AppConfig *config;
+	Worker::Format format;
 	QByteArray toAddress;
 	QByteArray rid;
 	int inSeq, outSeq;
@@ -59,11 +60,12 @@ public:
 	QTimer *httpExpireTimer;
 	QTimer *keepAliveTimer;
 
-	Private(JDnsShared *_dns, AppConfig *_config, Worker *_q) :
+	Private(JDnsShared *_dns, AppConfig *_config, Worker::Format _format, Worker *_q) :
 		QObject(_q),
 		q(_q),
 		dns(_dns),
 		config(_config),
+		format(_format),
 		hreq(0),
 		pendingSend(false),
 		expireTimer(0),
@@ -643,10 +645,10 @@ private slots:
 	}
 };
 
-Worker::Worker(JDnsShared *dns, AppConfig *config, QObject *parent) :
+Worker::Worker(JDnsShared *dns, AppConfig *config, Format format, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(dns, config, this);
+	d = new Private(dns, config, format, this);
 }
 
 Worker::~Worker()
@@ -657,6 +659,11 @@ Worker::~Worker()
 QByteArray Worker::rid() const
 {
 	return d->rid;
+}
+
+Worker::Format Worker::format() const
+{
+	return d->format;
 }
 
 void Worker::start(const QVariant &request, Mode mode)
