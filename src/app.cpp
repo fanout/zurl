@@ -274,6 +274,13 @@ public:
 
 		log_info("starting...");
 
+		if(options.contains("config") && options.value("config").isEmpty())
+		{
+			log_error("parameter to --config missing");
+			emit q->quit();
+			return;
+		}
+
 		QString configFile = options.value("config");
 		if(configFile.isEmpty())
 			configFile = "/etc/zurl.conf";
@@ -283,7 +290,10 @@ public:
 			QFile file(configFile);
 			if(!file.open(QIODevice::ReadOnly))
 			{
-				log_error("failed to open %s, and --config not passed", qPrintable(configFile));
+				if(options.contains("config"))
+					log_error("failed to open %s", qPrintable(configFile));
+				else
+					log_error("failed to open %s, and --config not passed", qPrintable(configFile));
 				emit q->quit();
 				return;
 			}
