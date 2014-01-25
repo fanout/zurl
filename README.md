@@ -1,9 +1,7 @@
 Zurl
 ====
-Date: January 24th, 2014
-
-Author: Justin Karneges <justin@fanout.io>
-
+Date: January 24th, 2014  
+Author: Justin Karneges <justin@fanout.io>  
 Mailing List: http://lists.fanout.io/listinfo.cgi/fanout-users-fanout.io
 
 Description
