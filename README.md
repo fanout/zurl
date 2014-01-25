@@ -6,7 +6,10 @@ Author: Justin Karneges <justin@fanout.io>
 
 Mailing List: http://lists.fanout.io/listinfo.cgi/fanout-users-fanout.io
 
-HTTP client worker with ZeroMQ interface, written in Qt/C++.
+Description
+-----------
+
+HTTP client worker with ZeroMQ interface.
 
 License
 -------
