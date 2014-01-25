@@ -8,12 +8,12 @@ client_id = "post.py"
 
 ctx = zmq.Context()
 out_sock = ctx.socket(zmq.PUSH)
-out_sock.connect("tcp://127.0.0.1:5550")
+out_sock.connect("ipc:///tmp/zurl-in")
 out_stream_sock = ctx.socket(zmq.ROUTER)
-out_stream_sock.connect("tcp://127.0.0.1:5551")
+out_stream_sock.connect("ipc:///tmp/zurl-in-stream")
 in_sock = ctx.socket(zmq.SUB)
 in_sock.setsockopt(zmq.SUBSCRIBE, client_id)
-in_sock.connect("tcp://127.0.0.1:5552")
+in_sock.connect("ipc:///tmp/zurl-out")
 
 time.sleep(0.5)
 

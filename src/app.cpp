@@ -305,28 +305,43 @@ public:
 		if(config.clientId.isEmpty())
 			config.clientId = QUuid::createUuid().toString().toLatin1();
 
-		QString in_url = settings.value("in_spec").toString();
-		QString in_stream_url = settings.value("in_stream_spec").toString();
-		QString out_url = settings.value("out_spec").toString();
-		QString in_req_url = settings.value("in_req_spec").toString();
+		QString in_spec = settings.value("in_spec").toString();
+		QString in_stream_spec = settings.value("in_stream_spec").toString();
+		QString out_spec = settings.value("out_spec").toString();
+		QString in_req_spec = settings.value("in_req_spec").toString();
+		QString ipcFileModeStr = settings.value("ipc_file_mode").toString();
 		config.maxWorkers = settings.value("max_open_requests", -1).toInt();
 		config.sessionBufferSize = settings.value("buffer_size", 200000).toInt();
 		config.sessionTimeout = settings.value("timeout", 600).toInt();
 		int inHwm = settings.value("in_hwm", 1000).toInt();
 		int outHwm = settings.value("out_hwm", 1000).toInt();
 
-		if((!in_url.isEmpty() || !in_stream_url.isEmpty() || !out_url.isEmpty()) && (in_url.isEmpty() || in_stream_url.isEmpty() || out_url.isEmpty()))
+		if((!in_spec.isEmpty() || !in_stream_spec.isEmpty() || !out_spec.isEmpty()) && (in_spec.isEmpty() || in_stream_spec.isEmpty() || out_spec.isEmpty()))
 		{
 			log_error("if any of in_spec, in_stream_spec, or out_spec are set then all of them must be set");
 			emit q->quit();
 			return;
 		}
 
-		if(in_url.isEmpty() && in_req_url.isEmpty())
+		if(in_spec.isEmpty() && in_req_spec.isEmpty())
 		{
 			log_error("must set at least in_spec+in_stream_spec+out_spec or in_req_spec");
 			emit q->quit();
 			return;
+		}
+
+		int ipcFileMode = -1;
+		if(!ipcFileModeStr.isEmpty())
+		{
+			// parse mode as octal
+			bool ok;
+			ipcFileMode = ipcFileModeStr.toInt(&ok, 8);
+			if(!ok)
+			{
+				log_error("invalid ipc_file_mode: %s", qPrintable(ipcFileModeStr));
+				emit q->quit();
+				return;
+			}
 		}
 
 		config.defaultPolicy = settings.value("defpolicy").toString();
@@ -347,24 +362,20 @@ public:
 		dns->addInterface(QHostAddress::Any);
 		dns->addInterface(QHostAddress::AnyIPv6);
 
-		if(!in_url.isEmpty())
+		if(!in_spec.isEmpty())
 		{
 			in_sock = new QZmq::Socket(QZmq::Socket::Pull, this);
 
 			in_sock->setHwm(inHwm);
 
-			if(!in_sock->bind(in_url))
-			{
-				log_error("unable to bind to in_spec: %s", qPrintable(in_url));
-				emit q->quit();
+			if(!bindSpec(in_sock, "in_spec", in_spec, ipcFileMode))
 				return;
-			}
 
 			in_valve = new QZmq::Valve(in_sock, this);
 			connect(in_valve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(in_readyRead(const QList<QByteArray> &)));
 		}
 
-		if(!in_stream_url.isEmpty())
+		if(!in_stream_spec.isEmpty())
 		{
 			in_stream_sock = new QZmq::Socket(QZmq::Socket::Dealer, this);
 
@@ -372,41 +383,30 @@ public:
 			in_stream_sock->setHwm(inHwm);
 
 			connect(in_stream_sock, SIGNAL(readyRead()), SLOT(in_stream_readyRead()));
-			if(!in_stream_sock->bind(in_stream_url))
-			{
-				log_error("unable to bind to in_stream_spec: %s", qPrintable(in_stream_url));
-				emit q->quit();
+
+			if(!bindSpec(in_stream_sock, "in_stream_spec", in_stream_spec, ipcFileMode))
 				return;
-			}
 		}
 
-		if(!out_url.isEmpty())
+		if(!out_spec.isEmpty())
 		{
 			out_sock = new QZmq::Socket(QZmq::Socket::Pub, this);
 
 			out_sock->setWriteQueueEnabled(false);
 			out_sock->setHwm(outHwm);
 
-			if(!out_sock->bind(out_url))
-			{
-				log_error("unable to bind to out_spec: %s", qPrintable(out_url));
-				emit q->quit();
+			if(!bindSpec(out_sock, "out_spec", out_spec, ipcFileMode))
 				return;
-			}
 		}
 
-		if(!in_req_url.isEmpty())
+		if(!in_req_spec.isEmpty())
 		{
 			in_req_sock = new QZmq::Socket(QZmq::Socket::Router, this);
 
 			in_req_sock->setHwm(inHwm);
 
-			if(!in_req_sock->bind(in_req_url))
-			{
-				log_error("unable to bind to in_req_spec: %s", qPrintable(in_req_url));
-				emit q->quit();
+			if(!bindSpec(in_req_sock, "in_req_spec", in_req_spec, ipcFileMode))
 				return;
-			}
 
 			in_req_valve = new QZmq::Valve(in_req_sock, this);
 			connect(in_req_valve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(in_req_readyRead(const QList<QByteArray> &)));
@@ -418,6 +418,42 @@ public:
 			in_req_valve->open();
 
 		log_info("started");
+	}
+
+	bool bindSpec(QZmq::Socket *sock, const QString &specName, const QString &specValue, int ipcFileMode)
+	{
+		if(!sock->bind(specValue))
+		{
+			log_error("unable to bind to %s: %s", qPrintable(specName), qPrintable(specValue));
+			emit q->quit();
+			return false;
+		}
+
+		if(specValue.startsWith("ipc://") && ipcFileMode != -1)
+		{
+			QFile::Permissions perms;
+			if(ipcFileMode & 0400)
+				perms |= QFile::ReadUser;
+			if(ipcFileMode & 0200)
+				perms |= QFile::WriteUser;
+			if(ipcFileMode & 0100)
+				perms |= QFile::ExeUser;
+			if(ipcFileMode & 0040)
+				perms |= QFile::ReadGroup;
+			if(ipcFileMode & 0020)
+				perms |= QFile::WriteGroup;
+			if(ipcFileMode & 0010)
+				perms |= QFile::ExeGroup;
+			if(ipcFileMode & 0004)
+				perms |= QFile::ReadOther;
+			if(ipcFileMode & 0002)
+				perms |= QFile::WriteOther;
+			if(ipcFileMode & 0001)
+				perms |= QFile::ExeOther;
+			QFile::setPermissions(specValue.mid(6), perms);
+		}
+
+		return true;
 	}
 
 	void handleIncoming(InputType type, const QByteArray &message, const QList<QByteArray> &reqHeaders = QList<QByteArray>())

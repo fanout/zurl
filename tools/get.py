@@ -9,7 +9,7 @@ if len(sys.argv) < 2:
 
 ctx = zmq.Context()
 sock = ctx.socket(zmq.REQ)
-sock.connect("tcp://127.0.0.1:5553")
+sock.connect("ipc:///tmp/zurl-req")
 
 req = dict()
 req["id"] = str(uuid.uuid4())
