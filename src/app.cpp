@@ -610,7 +610,7 @@ private slots:
 			return;
 		}
 
-		handleIncoming(InStream, message[0]);
+		handleIncoming(InStream, message[1]);
 	}
 
 	void in_req_readyRead(const QList<QByteArray> &message)
