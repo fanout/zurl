@@ -39,5 +39,5 @@ while True:
 	if 'body' in indata and len(indata['body']) > 0:
 		outdata = {'id': rid, 'from': client_id, 'seq': outseq, 'type': 'credit', 'credits': len(indata['body'])}
 		print 'OUT: %s' % outdata
-		out_stream_sock.send_multipart([raddr, '', tnetstring.dumps(outdata)])
+		out_stream_sock.send_multipart([raddr, '', 'T' + tnetstring.dumps(outdata)])
 		outseq += 1
