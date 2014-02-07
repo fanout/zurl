@@ -7,7 +7,7 @@ Mailing List: http://lists.fanout.io/listinfo.cgi/fanout-users-fanout.io
 Description
 -----------
 
-HTTP client worker with ZeroMQ interface.
+HTTP and WebSocket client worker with ZeroMQ interface.
 
 License
 -------
@@ -18,6 +18,7 @@ Features
 --------
 
   * Request HTTP and HTTPS URLs
+  * Connect to WS or WSS URLs for WebSockets
   * Completely event-driven, using JDNS and Libcurl
   * Handle thousands of simultaneous outbound connections
   * Two access methods: REQ and PUSH/SUB (think Mongrel2 in reverse!)
