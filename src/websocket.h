@@ -78,6 +78,7 @@ public:
 
 	void setConnectHost(const QString &host);
 	void setIgnoreTlsErrors(bool on);
+	void setMaxFrameSize(int size);
 
 	void start(const QUrl &uri, const HttpHeaders &headers = HttpHeaders());
 
@@ -86,6 +87,7 @@ public:
 	QByteArray responseReason() const;
 	HttpHeaders responseHeaders() const;
 	int framesAvailable() const;
+	int nextFrameSize() const;
 	int peerCloseCode() const;
 	ErrorCondition errorCondition() const;
 
