@@ -18,7 +18,7 @@ Features
 --------
 
   * Request HTTP and HTTPS URLs
-  * Connect to WS or WSS URLs for WebSockets
+  * Connect to WS and WSS URLs for WebSockets
   * Completely event-driven, using JDNS and Libcurl
   * Handle thousands of simultaneous outbound connections
   * Two access methods: REQ and PUSH/SUB (think Mongrel2 in reverse!)
