@@ -217,6 +217,8 @@ public:
 		}
 #endif
 
+		qsrand(time(NULL));
+
 		QStringList args = QCoreApplication::instance()->arguments();
 		args.removeFirst();
 

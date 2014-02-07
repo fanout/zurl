@@ -35,7 +35,8 @@ SOURCES += \
 	$$COMMON_DIR/log.cpp
 
 HEADERS += \
-	$$SRC_DIR/httprequest.h
+	$$SRC_DIR/httprequest.h \
+	$$SRC_DIR/websocket.h
 
 use_curl {
 	DEFINES += USE_CURL
@@ -44,6 +45,9 @@ use_curl {
 	DEFINES += USE_QNAM
 	SOURCES += $$SRC_DIR/httprequest_qnam.cpp
 }
+
+SOURCES += \
+	$$SRC_DIR/websocket.cpp
 
 HEADERS += \
 	$$SRC_DIR/appconfig.h \
