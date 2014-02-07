@@ -23,8 +23,6 @@
 #include "jdnsshared.h"
 #include "log.h"
 
-#define FRAME_SIZE_MAX 200000
-#define BUFFERED_SIZE_MAX 200000
 #define MAGIC_STRING "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 static quint16 read16(const quint8 *in)
@@ -270,6 +268,7 @@ public:
 	State state;
 	QString connectHost;
 	bool ignoreTlsErrors;
+	int maxFrameSize;
 	QSslSocket *sock;
 	QUrl requestUri;
 	HttpHeaders requestHeaders;
@@ -296,6 +295,7 @@ public:
 		dns(_dns),
 		state(Idle),
 		ignoreTlsErrors(false),
+		maxFrameSize(-1),
 		sock(0),
 		responseCode(-1),
 		peerClosing(false),
@@ -354,6 +354,11 @@ public:
 
 	void writeFrame(const Frame &frame)
 	{
+		assert(state != Idle);
+
+		if(state == Closing)
+			return;
+
 		int opcode;
 		if(frame.type == Frame::Continuation)
 			opcode = 0;
@@ -383,7 +388,7 @@ public:
 		Frame f = in.takeFirst();
 		inBytes -= f.data.size();
 
-		if(!pendingRead && inBytes < BUFFERED_SIZE_MAX && sock && sock->bytesAvailable() > 0)
+		if(!pendingRead && (maxFrameSize == -1 || inBytes < maxFrameSize) && sock && sock->bytesAvailable() > 0)
 		{
 			pendingRead = true;
 			QMetaObject::invokeMethod(this, "tryRead", Qt::QueuedConnection);
@@ -517,13 +522,13 @@ public:
 
 	void handleIncomingFrame(bool fin, int opcode, const QByteArray &data)
 	{
+		// skip any frames after close frame
+		if(peerClosing)
+			return;
+
 		// close message?
 		if(opcode == 8)
 		{
-			// ignore double-close
-			if(peerClosing)
-				return;
-
 			peerClosing = true;
 
 			if(data.count() == 2)
@@ -636,7 +641,7 @@ private slots:
 		pendingRead = false;
 
 		// don't read if we're at limit
-		if(inBytes >= BUFFERED_SIZE_MAX)
+		if(maxFrameSize != -1 && inBytes >= maxFrameSize)
 			return;
 
 		QByteArray buf = sock->readAll();
@@ -648,7 +653,7 @@ private slots:
 
 		quint64 size;
 		int ret = checkFrame((const quint8 *)inbuf.data(), inbuf.size(), &size);
-		if(ret >= 1 && size > FRAME_SIZE_MAX)
+		if(ret >= 1 && (maxFrameSize == -1 || size > (quint64)maxFrameSize))
 		{
 			cleanup();
 			state = Idle;
@@ -777,6 +782,8 @@ private slots:
 	{
 		log_debug("ws: disconnected");
 
+		cleanup();
+		state = Idle;
 		emit q->closed();
 	}
 
@@ -843,6 +850,11 @@ void WebSocket::setIgnoreTlsErrors(bool on)
 	d->ignoreTlsErrors = on;
 }
 
+void WebSocket::setMaxFrameSize(int size)
+{
+	d->maxFrameSize = size;
+}
+
 void WebSocket::start(const QUrl &uri, const HttpHeaders &headers)
 {
 	d->start(uri, headers);
@@ -871,6 +883,11 @@ HttpHeaders WebSocket::responseHeaders() const
 int WebSocket::framesAvailable() const
 {
 	return d->in.count();
+}
+
+int WebSocket::nextFrameSize() const
+{
+	return d->in.first().data.size();
 }
 
 int WebSocket::peerCloseCode() const
