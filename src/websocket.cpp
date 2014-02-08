@@ -481,7 +481,7 @@ public:
 	{
 		if(inStatusLine)
 		{
-			if(!parseStatusLine(line, &responseCode, &responseReason) || responseCode != 101)
+			if(!parseStatusLine(line, &responseCode, &responseReason))
 			{
 				cleanup();
 				state = Idle;
@@ -496,6 +496,15 @@ public:
 		{
 			if(line.isEmpty())
 			{
+				if(responseCode != 101)
+				{
+					cleanup();
+					state = Idle;
+					errorCondition = ErrorRejected;
+					emit q->error();
+					return false;
+				}
+
 				// TODO: confirm Sec-WebSocket-Accept == base64(sha1(requestKey + MAGIC_STRING))
 
 				state = Connected;

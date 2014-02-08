@@ -44,6 +44,10 @@ while True:
 	inseq += 1
 
 	if state == 0:
+		mtype = m.get('type')
+		if mtype is not None:
+			break
+
 		# connected
 		state = 1
 		raddr = m['from']

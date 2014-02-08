@@ -45,6 +45,7 @@ public:
 		ErrorPolicy,
 		ErrorConnect,
 		ErrorTls,
+		ErrorRejected,
 		ErrorFrameTooLarge,
 		ErrorTimeout
 	};

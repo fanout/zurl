@@ -739,11 +739,23 @@ private slots:
 
 	void respondError(const QByteArray &condition)
 	{
+		respondError(condition, -1, QByteArray(), HttpHeaders());
+	}
+
+	void respondError(const QByteArray &condition, int code, const QByteArray &reason, const HttpHeaders &headers)
+	{
 		QPointer<QObject> self = this;
 
 		ZhttpResponsePacket resp;
 		resp.type = ZhttpResponsePacket::Error;
 		resp.condition = condition;
+
+		if(code != -1)
+		{
+			resp.code = code;
+			resp.reason = reason;
+			resp.headers = headers;
+		}
 
 		writeResponse(resp);
 		if(!self)
@@ -917,6 +929,8 @@ private slots:
 				condition = "remote-connection-failed"; break;
 			case WebSocket::ErrorTls:
 				condition = "tls-error"; break;
+			case WebSocket::ErrorRejected:
+				condition = "rejected"; break;
 			case WebSocket::ErrorFrameTooLarge:
 				condition = "frame-too-large"; break;
 			case WebSocket::ErrorTimeout:
@@ -927,7 +941,10 @@ private slots:
 				break;
 		}
 
-		respondError(condition);
+		if(condition == "rejected")
+			respondError(condition, ws->responseCode(), ws->responseReason(), ws->responseHeaders());
+		else
+			respondError(condition);
 	}
 
 	void expire_timeout()
