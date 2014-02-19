@@ -126,13 +126,11 @@ public:
 		if(method == "OPTIONS")
 		{
 			expectBody = false;
-			curl_easy_setopt(easy, CURLOPT_NOBODY, 1);
 			curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, "OPTIONS");
 		}
 		else if(method == "HEAD")
 		{
 			expectBody = false;
-			curl_easy_setopt(easy, CURLOPT_NOBODY, 1);
 			curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, NULL);
 		}
 		else if(method == "GET")
@@ -158,7 +156,6 @@ public:
 		else if(method == "DELETE")
 		{
 			expectBody = false;
-			curl_easy_setopt(easy, CURLOPT_NOBODY, 1);
 			curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, "DELETE");
 		}
 		else
