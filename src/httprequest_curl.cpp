@@ -44,6 +44,15 @@ static const char *socketActionToString(int x)
 	}
 }
 
+static const char *msgToString(int x)
+{
+	switch(x)
+	{
+		case CURLMSG_DONE: return "CURLMSG_DONE";
+		default: return 0;
+	}
+}
+
 class CurlConnection : public QObject
 {
 	Q_OBJECT
@@ -579,14 +588,18 @@ public:
 			if(!m || !m->msg)
 				break;
 
+			const char *str = msgToString(m->msg);
+			if(str)
+				log_debug("message: %s", str);
+			else
+				log_debug("unknown message: %d", m->msg);
+
 			if(m->msg == CURLMSG_DONE)
 			{
 				CurlConnection *conn;
 				curl_easy_getinfo(m->easy_handle, CURLINFO_PRIVATE, &conn);
 				conn->done(m->data.result);
 			}
-			else
-				log_debug("unknown message: %d\n", m->msg);
 		}
 	}
 
