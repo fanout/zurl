@@ -22,7 +22,9 @@
 #include <QSslSocket>
 #include "jdnsshared.h"
 #include "log.h"
+#include "bufferlist.h"
 
+#define REJECT_BODY_MAX 100000
 #define MAGIC_STRING "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 static quint16 read16(const quint8 *in)
@@ -230,6 +232,54 @@ static QByteArray parseFrame(const quint8 *data, bool *fin, int *opcode, int *by
 	return payload;
 }
 
+static int findLinebreak(const quint8 *data, int size)
+{
+	for(int n = 0; n < size - 1; ++n)
+	{
+		if(data[n] == '\r' && data[n + 1] == '\n')
+			return n;
+	}
+
+	return -1;
+}
+
+// ret: 0 = need more data (size unknown), 1 = need more data (size known), 2 = ready to read, -1 = error
+static int checkChunk(const quint8 *data, quint64 size, quint64 *payloadSize)
+{
+	int at = findLinebreak(data, (int)size);
+	if(at == -1)
+		return 0;
+
+	bool ok;
+	int x = QByteArray((const char *)data, at).toInt(&ok, 16);
+	if(!ok)
+		return -1;
+
+	*payloadSize = (quint64)x;
+
+	at += 2 + x;
+	if((quint64)at + 2 > size)
+		return 1;
+
+	if(data[at] != '\r' || data[at + 1] != '\n')
+		return -1;
+
+	return 2;
+}
+
+// this method assumes checkChunk has passed
+static QByteArray parseChunk(const quint8 *data, quint64 size, int *bytesRead)
+{
+	int at = findLinebreak(data, (int)size);
+
+	bool ok;
+	int x = QByteArray((const char *)data, at).toInt(&ok, 16);
+
+	at += 2;
+	*bytesRead = at + x + 2;
+	return QByteArray((const char *)data + at, x);
+}
+
 class WebSocket::Private : public QObject
 {
 	Q_OBJECT
@@ -276,6 +326,10 @@ public:
 	int responseCode;
 	QByteArray responseReason;
 	HttpHeaders responseHeaders;
+	BufferList responseBody;
+	int responseContentLength;
+	bool readingRejectBody;
+	bool chunked;
 	bool peerClosing;
 	int peerCloseCode;
 	QList<QHostAddress> addrs;
@@ -298,6 +352,9 @@ public:
 		maxFrameSize(-1),
 		sock(0),
 		responseCode(-1),
+		responseContentLength(-1),
+		readingRejectBody(false),
+		chunked(false),
 		peerClosing(false),
 		peerCloseCode(-1),
 		errorCondition(ErrorNone),
@@ -496,19 +553,40 @@ public:
 		{
 			if(line.isEmpty())
 			{
-				if(responseCode != 101)
+				if(responseCode == 101)
 				{
-					cleanup();
-					state = Idle;
-					errorCondition = ErrorRejected;
-					emit q->error();
-					return false;
+					// TODO: confirm Sec-WebSocket-Accept == base64(sha1(requestKey + MAGIC_STRING))
+
+					state = Connected;
+					emit q->connected();
 				}
+				else
+				{
+					// we'll read the response body before emitting error
+					if(responseHeaders.contains("Content-Length"))
+					{
+						bool ok;
+						responseContentLength = responseHeaders.get("Content-Length").toInt(&ok);
+						if(!ok)
+						{
+							cleanup();
+							state = Idle;
+							errorCondition = ErrorGeneric;
+							emit q->error();
+							return false;
+						}
+					}
+					else if(responseHeaders.get("Transfer-Encoding") == "chunked")
+					{
+						chunked = true;
+					}
 
-				// TODO: confirm Sec-WebSocket-Accept == base64(sha1(requestKey + MAGIC_STRING))
+					// remove these headers as we'll rewrite Content-Length based on read limit
+					responseHeaders.removeAll("Content-Length");
+					responseHeaders.removeAll("Transfer-Encoding");
 
-				state = Connected;
-				emit q->connected();
+					readingRejectBody = true;
+				}
 			}
 			else
 			{
@@ -580,6 +658,115 @@ public:
 		emit q->readyRead();
 	}
 
+	void tryProcessFrame()
+	{
+		quint64 size;
+		int ret = checkFrame((const quint8 *)inbuf.data(), inbuf.size(), &size);
+		if(ret >= 1 && (maxFrameSize == -1 || size > (quint64)maxFrameSize))
+		{
+			cleanup();
+			state = Idle;
+			errorCondition = ErrorFrameTooLarge;
+			emit q->error();
+			return;
+		}
+
+		if(ret == 2)
+		{
+			bool fin;
+			int opcode;
+			int bytesRead;
+			QByteArray data = parseFrame((const quint8 *)inbuf.data(), &fin, &opcode, &bytesRead);
+			inbuf = inbuf.mid(bytesRead);
+
+			handleIncomingFrame(fin, opcode, data);
+		}
+	}
+
+	void tryProcessBody()
+	{
+		bool eof = false;
+
+		if(chunked)
+		{
+			while(!eof)
+			{
+				quint64 size;
+				int ret = checkChunk((const quint8 *)inbuf.data(), inbuf.size(), &size);
+				if(ret < 0)
+				{
+					cleanup();
+					state = Idle;
+					errorCondition = ErrorGeneric;
+					emit q->error();
+					return;
+				}
+
+				if(ret < 1)
+				{
+					// no data and size unknown
+					break;
+				}
+
+				if(responseBody.size() + size > REJECT_BODY_MAX)
+				{
+					// can't fit the next chunk. we'll stop now
+					eof = true;
+				}
+				else if(ret == 2)
+				{
+					int bytesRead;
+					QByteArray chunk = parseChunk((const quint8 *)inbuf.data(), inbuf.size(), &bytesRead);
+					inbuf = inbuf.mid(bytesRead);
+
+					if(!chunk.isEmpty())
+						responseBody += chunk;
+					else
+						eof = true;
+				}
+			}
+		}
+		else
+		{
+			if(!inbuf.isEmpty())
+			{
+				int avail = REJECT_BODY_MAX - responseBody.size();
+				int size = qMin(inbuf.size(), avail);
+				responseBody += inbuf.mid(0, size);
+				inbuf = inbuf.mid(size);
+
+				assert(responseBody.size() <= REJECT_BODY_MAX);
+
+				if(responseContentLength != -1)
+				{
+					assert(responseBody.size() <= responseContentLength);
+
+					if(responseBody.size() == responseContentLength || responseBody.size() == REJECT_BODY_MAX)
+						eof = true;
+				}
+				else
+				{
+					if(responseBody.size() == REJECT_BODY_MAX)
+						eof = true;
+				}
+			}
+		}
+
+		if(eof)
+			respondRejected();
+	}
+
+	void respondRejected()
+	{
+		// force content-length on rejections
+		responseHeaders += HttpHeader("Content-Length", QByteArray::number(responseBody.size()));
+
+		cleanup();
+		state = Idle;
+		errorCondition = ErrorRejected;
+		emit q->error();
+	}
+
 private slots:
 	void tryNextAddress()
 	{
@@ -615,7 +802,7 @@ private slots:
 		log_debug("ws: connecting to %s:%d%s", qPrintable(addr.toString()), port, useSsl ? " (ssl)" : "");
 
 		if(useSsl)
-			sock->connectToHostEncrypted(addr.toString(), port, host);
+			sock->connectToHostEncrypted(addr.toString(), port, requestUri.host());
 		else
 			sock->connectToHost(host, port);
 	}
@@ -660,27 +847,7 @@ private slots:
 		log_debug("ws: read: %d", buf.size());
 		inbuf += buf;
 
-		quint64 size;
-		int ret = checkFrame((const quint8 *)inbuf.data(), inbuf.size(), &size);
-		if(ret >= 1 && (maxFrameSize == -1 || size > (quint64)maxFrameSize))
-		{
-			cleanup();
-			state = Idle;
-			errorCondition = ErrorFrameTooLarge;
-			emit q->error();
-			return;
-		}
-
-		if(ret == 2)
-		{
-			bool fin;
-			int opcode;
-			int bytesRead;
-			QByteArray data = parseFrame((const quint8 *)inbuf.data(), &fin, &opcode, &bytesRead);
-			inbuf = inbuf.mid(bytesRead);
-
-			handleIncomingFrame(fin, opcode, data);
-		}
+		tryProcessFrame();
 	}
 
 	void sock_connected()
@@ -698,13 +865,14 @@ private slots:
 		requestHeaders.removeAll("Connection");
 		requestHeaders.removeAll("Sec-WebSocket-Version");
 		requestHeaders.removeAll("Sec-WebSocket-Key");
+		requestHeaders.removeAll("Accept-Encoding"); // we only support unencoded rejections
 
 		// don't pass along extensions since they may cause problems if we don't understand them
 		requestHeaders.removeAll("Sec-WebSocket-Extensions");
 
 		// note: we let Sec-WebSocket-Protocol go through, as this should work end-to-end
 
-		requestHeaders += HttpHeader("Host", host.toUtf8());
+		requestHeaders += HttpHeader("Host", requestUri.host().toUtf8());
 		requestHeaders += HttpHeader("Upgrade", "websocket");
 		requestHeaders += HttpHeader("Connection", "Upgrade");
 		requestHeaders += HttpHeader("Sec-WebSocket-Version", "13");
@@ -715,7 +883,7 @@ private slots:
 			buf += h.first + ": " + h.second + "\r\n";
 		buf += "\r\n";
 
-		log_debug("ws: sending handshake");
+		log_debug("ws: sending handshake: [%s]", buf.data());
 		pendingWrites += WriteItem(buf.size());
 		sock->write(buf);
 	}
@@ -730,28 +898,42 @@ private slots:
 			log_debug("ws: read: %d", buf.size());
 			inbuf += buf;
 
-			while(true)
+			if(!readingRejectBody)
 			{
-				int at = inbuf.indexOf('\n');
-				if(at == -1)
-					break;
-
-				QByteArray line;
-				if(at > 0 && inbuf[at - 1] == '\r')
+				QPointer<QObject> self = this;
+				bool ok = true;
+				while(state == Connecting && !readingRejectBody && ok)
 				{
-					--at;
-					line = inbuf.mid(0, at);
-					inbuf = inbuf.mid(at + 2);
-				}
-				else
-				{
-					line = inbuf.mid(0, at);
-					inbuf = inbuf.mid(at + 1);
+					int at = inbuf.indexOf('\n');
+					if(at == -1)
+						return;
+
+					QByteArray line;
+					if(at > 0 && inbuf[at - 1] == '\r')
+					{
+						--at;
+						line = inbuf.mid(0, at);
+						inbuf = inbuf.mid(at + 2);
+					}
+					else
+					{
+						line = inbuf.mid(0, at);
+						inbuf = inbuf.mid(at + 1);
+					}
+
+					ok = handleResponseLine(line);
+					if(!self)
+						return;
 				}
 
-				if(!handleResponseLine(line))
-					break;
+				if(!ok)
+					return;
 			}
+
+			if(state == Connected)
+				tryProcessFrame();
+			else
+				tryProcessBody();
 		}
 		else
 		{
@@ -805,6 +987,14 @@ private slots:
 		{
 			case QAbstractSocket::ConnectionRefusedError:
 				curError = ErrorConnect;
+				break;
+			case QAbstractSocket::RemoteHostClosedError:
+				if(readingRejectBody && responseContentLength == -1 && !chunked)
+				{
+					respondRejected();
+					return;
+				}
+				curError = ErrorGeneric;
 				break;
 			case QAbstractSocket::SslHandshakeFailedError:
 				curError = ErrorTls;
@@ -907,6 +1097,11 @@ int WebSocket::peerCloseCode() const
 WebSocket::ErrorCondition WebSocket::errorCondition() const
 {
 	return d->errorCondition;
+}
+
+QByteArray WebSocket::readResponseBody()
+{
+	return d->responseBody.take();
 }
 
 void WebSocket::writeFrame(const Frame &frame)

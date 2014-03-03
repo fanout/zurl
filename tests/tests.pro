@@ -1,4 +1,5 @@
 TEMPLATE = subdirs
 
 SUBDIRS += \
-	pro/httprequesttest
+	pro/httprequesttest \
+	pro/websockettest

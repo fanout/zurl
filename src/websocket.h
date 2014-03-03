@@ -92,6 +92,9 @@ public:
 	int peerCloseCode() const;
 	ErrorCondition errorCondition() const;
 
+	// for rejections
+	QByteArray readResponseBody();
+
 	void writeFrame(const Frame &frame);
 	Frame readFrame();
 	void close(int code = -1);

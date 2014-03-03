@@ -739,10 +739,10 @@ private slots:
 
 	void respondError(const QByteArray &condition)
 	{
-		respondError(condition, -1, QByteArray(), HttpHeaders());
+		respondError(condition, -1, QByteArray(), HttpHeaders(), QByteArray());
 	}
 
-	void respondError(const QByteArray &condition, int code, const QByteArray &reason, const HttpHeaders &headers)
+	void respondError(const QByteArray &condition, int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body)
 	{
 		QPointer<QObject> self = this;
 
@@ -755,6 +755,7 @@ private slots:
 			resp.code = code;
 			resp.reason = reason;
 			resp.headers = headers;
+			resp.body = body;
 		}
 
 		writeResponse(resp);
@@ -942,7 +943,7 @@ private slots:
 		}
 
 		if(condition == "rejected")
-			respondError(condition, ws->responseCode(), ws->responseReason(), ws->responseHeaders());
+			respondError(condition, ws->responseCode(), ws->responseReason(), ws->responseHeaders(), ws->readResponseBody());
 		else
 			respondError(condition);
 	}
