@@ -30,7 +30,7 @@
 
 #include <qjson/serializer.h>
 #include <qjson/parser.h>
-#include "jdnsshared.h"
+#include "qjdnsshared.h"
 #include "qzmqsocket.h"
 #include "qzmqreqmessage.h"
 #include "qzmqvalve.h"
@@ -176,7 +176,7 @@ public:
 	};
 
 	App *q;
-	JDnsShared *dns;
+	QJDnsShared *dns;
 	QZmq::Socket *in_sock;
 	QZmq::Socket *in_stream_sock;
 	QZmq::Socket *out_sock;
@@ -360,7 +360,7 @@ public:
 		cleanStringList(&config.allowExps);
 		cleanStringList(&config.denyExps);
 
-		dns = new JDnsShared(JDnsShared::UnicastInternet, this);
+		dns = new QJDnsShared(QJDnsShared::UnicastInternet, this);
 		dns->addInterface(QHostAddress::Any);
 		dns->addInterface(QHostAddress::AnyIPv6);
 

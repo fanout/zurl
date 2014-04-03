@@ -20,7 +20,7 @@
 #include <assert.h>
 #include <QUrl>
 #include <QSslSocket>
-#include "jdnsshared.h"
+#include "qjdnsshared.h"
 #include "log.h"
 #include "bufferlist.h"
 
@@ -314,7 +314,7 @@ public:
 	};
 
 	WebSocket *q;
-	JDnsShared *dns;
+	QJDnsShared *dns;
 	State state;
 	QString connectHost;
 	bool ignoreTlsErrors;
@@ -343,7 +343,7 @@ public:
 	bool pendingRead;
 	QList<WriteItem> pendingWrites;
 
-	Private(WebSocket *_q, JDnsShared *_dns) :
+	Private(WebSocket *_q, QJDnsShared *_dns) :
 		QObject(_q),
 		q(_q),
 		dns(_dns),
@@ -403,7 +403,7 @@ public:
 		{
 			log_debug("ws: resolving %s", qPrintable(host));
 
-			JDnsSharedRequest *dreq = new JDnsSharedRequest(dns);
+			QJDnsSharedRequest *dreq = new QJDnsSharedRequest(dns);
 			connect(dreq, SIGNAL(resultsReady()), SLOT(dreq_resultsReady()));
 			dreq->query(QUrl::toAce(host), QJDns::A);
 		}
@@ -809,7 +809,7 @@ private slots:
 
 	void dreq_resultsReady()
 	{
-		JDnsSharedRequest *dreq = (JDnsSharedRequest *)sender();
+		QJDnsSharedRequest *dreq = (QJDnsSharedRequest *)sender();
 
 		if(dreq->success())
 		{
@@ -1028,7 +1028,7 @@ private slots:
 	}
 };
 
-WebSocket::WebSocket(JDnsShared *dns, QObject *parent) :
+WebSocket::WebSocket(QJDnsShared *dns, QObject *parent) :
 	QObject(parent)
 {
 	d = new Private(this, dns);

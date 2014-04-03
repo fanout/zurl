@@ -19,7 +19,7 @@
 #include <QTcpServer>
 #include <QtTest/QtTest>
 #include "log.h"
-#include "jdnsshared.h"
+#include "qjdnsshared.h"
 #include "httpheaders.h"
 #include "websocket.h"
 
@@ -137,7 +137,7 @@ class WebSocketTest : public QObject
 
 private:
 	WebSocketServer *server;
-	JDnsShared *dns;
+	QJDnsShared *dns;
 
 	void waitForSignal(QSignalSpy *spy)
 	{
@@ -153,7 +153,7 @@ private slots:
 		server = new WebSocketServer(this);
 		server->listen();
 
-		dns = new JDnsShared(JDnsShared::UnicastInternet, this);
+		dns = new QJDnsShared(QJDnsShared::UnicastInternet, this);
 		dns->addInterface(QHostAddress::Any);
 		dns->addInterface(QHostAddress::AnyIPv6);
 	}

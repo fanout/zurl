@@ -23,7 +23,7 @@
 
 class QHostAddress;
 class QUrl;
-class JDnsShared;
+class QJDnsShared;
 
 class HttpRequest : public QObject
 {
@@ -41,7 +41,7 @@ public:
 		ErrorBodyNotAllowed
 	};
 
-	HttpRequest(JDnsShared *dns, QObject *parent = 0);
+	HttpRequest(QJDnsShared *dns, QObject *parent = 0);
 	~HttpRequest();
 
 	void setConnectHost(const QString &host);

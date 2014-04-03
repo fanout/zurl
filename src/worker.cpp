@@ -21,7 +21,7 @@
 #include <QVariant>
 #include <QTimer>
 #include <QPointer>
-#include "jdnsshared.h"
+#include "qjdnsshared.h"
 #include "httprequest.h"
 #include "websocket.h"
 #include "zhttprequestpacket.h"
@@ -44,7 +44,7 @@ public:
 	};
 
 	Worker *q;
-	JDnsShared *dns;
+	QJDnsShared *dns;
 	AppConfig *config;
 	Transport transport;
 	Worker::Format format;
@@ -74,7 +74,7 @@ public:
 	bool wsPeerClosing;
 	bool wsPendingPeerClose;
 
-	Private(JDnsShared *_dns, AppConfig *_config, Worker::Format _format, Worker *_q) :
+	Private(QJDnsShared *_dns, AppConfig *_config, Worker::Format _format, Worker *_q) :
 		QObject(_q),
 		q(_q),
 		dns(_dns),
@@ -967,7 +967,7 @@ private slots:
 	}
 };
 
-Worker::Worker(JDnsShared *dns, AppConfig *config, Format format, QObject *parent) :
+Worker::Worker(QJDnsShared *dns, AppConfig *config, Format format, QObject *parent) :
 	QObject(parent)
 {
 	d = new Private(dns, config, format, this);

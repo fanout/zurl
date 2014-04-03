@@ -23,7 +23,7 @@
 
 class QHostAddress;
 class QUrl;
-class JDnsShared;
+class QJDnsShared;
 
 class WebSocket : public QObject
 {
@@ -74,7 +74,7 @@ public:
 		}
 	};
 
-	WebSocket(JDnsShared *dns, QObject *parent = 0);
+	WebSocket(QJDnsShared *dns, QObject *parent = 0);
 	~WebSocket();
 
 	void setConnectHost(const QString &host);

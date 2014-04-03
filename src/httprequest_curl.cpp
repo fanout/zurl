@@ -22,7 +22,7 @@
 #include <QPointer>
 #include <QUrl>
 #include <curl/curl.h>
-#include "jdnsshared.h"
+#include "qjdnsshared.h"
 #include "bufferlist.h"
 #include "log.h"
 
@@ -647,7 +647,7 @@ class HttpRequest::Private : public QObject
 
 public:
 	HttpRequest *q;
-	JDnsShared *dns;
+	QJDnsShared *dns;
 	QString connectHost;
 	bool ignoreTlsErrors;
 	HttpRequest::ErrorCondition errorCondition;
@@ -661,7 +661,7 @@ public:
 	CurlConnection *conn;
 	bool handleAdded;
 
-	Private(HttpRequest *_q, JDnsShared *_dns) :
+	Private(HttpRequest *_q, QJDnsShared *_dns) :
 		QObject(_q),
 		q(_q),
 		dns(_dns),
@@ -835,7 +835,7 @@ public:
 		}
 		else
 		{
-			JDnsSharedRequest *dreq = new JDnsSharedRequest(dns);
+			QJDnsSharedRequest *dreq = new QJDnsSharedRequest(dns);
 			connect(dreq, SIGNAL(resultsReady()), SLOT(dreq_resultsReady()));
 			dreq->query(QUrl::toAce(host), QJDns::A);
 		}
@@ -897,7 +897,7 @@ private slots:
 
 	void dreq_resultsReady()
 	{
-		JDnsSharedRequest *dreq = (JDnsSharedRequest *)sender();
+		QJDnsSharedRequest *dreq = (QJDnsSharedRequest *)sender();
 
 		if(dreq->success())
 		{
@@ -987,7 +987,7 @@ private slots:
 	}
 };
 
-HttpRequest::HttpRequest(JDnsShared *dns, QObject *parent) :
+HttpRequest::HttpRequest(QJDnsShared *dns, QObject *parent) :
 	QObject(parent)
 {
 	d = new Private(this, dns);

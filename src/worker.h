@@ -21,7 +21,7 @@
 #include <QObject>
 
 class QVariant;
-class JDnsShared;
+class QJDnsShared;
 class AppConfig;
 
 class Worker : public QObject
@@ -41,7 +41,7 @@ public:
 		JsonFormat
 	};
 
-	Worker(JDnsShared *dns, AppConfig *config, Format format, QObject *parent = 0);
+	Worker(QJDnsShared *dns, AppConfig *config, Format format, QObject *parent = 0);
 	~Worker();
 
 	QByteArray rid() const;

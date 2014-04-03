@@ -1,14 +1,7 @@
 SRC_DIR = $$PWD/../..
 COMMON_DIR = $$SRC_DIR/common
 
-INCLUDEPATH += $$SRC_DIR
-
-INCLUDEPATH += $$SRC_DIR/jdns
 include($$SRC_DIR/jdns/jdns.pri)
-
-INCLUDEPATH += $$SRC_DIR/jdnsshared
-HEADERS += $$SRC_DIR/jdnsshared/jdnsshared.h
-SOURCES += $$SRC_DIR/jdnsshared/jdnsshared.cpp
 
 INCLUDEPATH += $$SRC_DIR/qzmq/src
 include($$SRC_DIR/qzmq/src/src.pri)
@@ -33,6 +26,8 @@ SOURCES += \
 	$$COMMON_DIR/zhttpresponsepacket.cpp \
 	$$COMMON_DIR/bufferlist.cpp \
 	$$COMMON_DIR/log.cpp
+
+INCLUDEPATH += $$SRC_DIR
 
 HEADERS += \
 	$$SRC_DIR/httprequest.h \
