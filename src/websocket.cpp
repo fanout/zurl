@@ -867,10 +867,10 @@ private slots:
 		requestHeaders.removeAll("Sec-WebSocket-Key");
 		requestHeaders.removeAll("Accept-Encoding"); // we only support unencoded rejections
 
-		// don't pass along extensions since they may cause problems if we don't understand them
-		requestHeaders.removeAll("Sec-WebSocket-Extensions");
-
-		// note: we let Sec-WebSocket-Protocol go through, as this should work end-to-end
+		// note: we let Sec-WebSocket-Extensions and
+		//   Sec-WebSocket-Protocol go through. clients should take
+		//   care to not send connection-level extensions, as we won't
+		//   be able to understand them
 
 		requestHeaders += HttpHeader("Host", requestUri.host().toUtf8());
 		requestHeaders += HttpHeader("Upgrade", "websocket");
