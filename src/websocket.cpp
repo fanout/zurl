@@ -607,11 +607,12 @@ public:
 		return true;
 	}
 
-	void handleIncomingFrame(bool fin, int opcode, const QByteArray &data)
+	// return true if new frame to read
+	bool handleIncomingFrame(bool fin, int opcode, const QByteArray &data)
 	{
 		// skip any frames after close frame
 		if(peerClosing)
-			return;
+			return false;
 
 		// close message?
 		if(opcode == 8)
@@ -631,7 +632,7 @@ public:
 			else
 				emit q->peerClosing();
 
-			return;
+			return false;
 		}
 
 		log_debug("ws: received frame type=%d, size=%d", opcode, data.size());
@@ -650,15 +651,36 @@ public:
 		else
 		{
 			// ignore unknown frame type
-			return;
+			return false;
 		}
 
 		in += Frame(ftype, data, !fin);
 		inBytes += data.size();
-		emit q->readyRead();
+		return true;
 	}
 
-	void tryProcessFrame()
+	void tryProcessFrames()
+	{
+		QPointer<QObject> self = this;
+
+		bool newFrames = false;
+		bool ok = true;
+		while(ok)
+		{
+			ok = tryProcessFrame();
+			if(!self)
+				return;
+
+			if(ok)
+				newFrames = true;
+		}
+
+		if(newFrames)
+			emit q->readyRead();
+	}
+
+	// return true if new frame to read, and that we should try again
+	bool tryProcessFrame()
 	{
 		quint64 size;
 		int ret = checkFrame((const quint8 *)inbuf.data(), inbuf.size(), &size);
@@ -668,7 +690,7 @@ public:
 			state = Idle;
 			errorCondition = ErrorFrameTooLarge;
 			emit q->error();
-			return;
+			return false;
 		}
 
 		if(ret == 2)
@@ -679,8 +701,10 @@ public:
 			QByteArray data = parseFrame((const quint8 *)inbuf.data(), &fin, &opcode, &bytesRead);
 			inbuf = inbuf.mid(bytesRead);
 
-			handleIncomingFrame(fin, opcode, data);
+			return handleIncomingFrame(fin, opcode, data);
 		}
+
+		return false;
 	}
 
 	void tryProcessBody()
@@ -847,7 +871,7 @@ private slots:
 		log_debug("ws: read: %d", buf.size());
 		inbuf += buf;
 
-		tryProcessFrame();
+		tryProcessFrames();
 	}
 
 	void sock_connected()
@@ -931,7 +955,7 @@ private slots:
 			}
 
 			if(state == Connected)
-				tryProcessFrame();
+				tryProcessFrames();
 			else
 				tryProcessBody();
 		}
