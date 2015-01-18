@@ -396,6 +396,7 @@ public:
 
 			out_sock->setWriteQueueEnabled(false);
 			out_sock->setHwm(outHwm);
+			out_sock->setShutdownWaitTime(0);
 
 			if(!bindSpec(out_sock, "out_spec", out_spec, ipcFileMode))
 				return;
