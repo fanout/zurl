@@ -336,6 +336,16 @@ public:
 				return;
 			}
 
+			QByteArray hostHeader = request.uri.host().toUtf8();
+
+			// only tack on the port if it isn't being overridden
+			int port = request.uri.port(defaultPort);
+			if(request.connectPort == -1 && port != defaultPort)
+				hostHeader += ":" + QByteArray::number(port);
+
+			headers.removeAll("Host");
+			headers += HttpHeader("Host", hostHeader);
+
 			ws = new WebSocket(dns, this);
 			connect(ws, SIGNAL(nextAddress(const QHostAddress &)), SLOT(req_nextAddress(const QHostAddress &)));
 			connect(ws, SIGNAL(connected()), SLOT(ws_connected()));
