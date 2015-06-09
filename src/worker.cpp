@@ -269,6 +269,9 @@ public:
 			if(request.credits != -1)
 				outCredits += request.credits;
 
+			headers.removeAll("Host");
+			headers += HttpHeader("Host", request.uri.host().toUtf8());
+
 			if(!headers.contains("Content-Length"))
 			{
 				if(request.more)
