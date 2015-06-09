@@ -211,6 +211,10 @@ public:
 
 		if(transport == HttpTransport)
 		{
+			// fire and forget
+			if(mode == Worker::Stream && toAddress.isEmpty())
+				quiet = true;
+
 			// streaming only allowed on streaming interface
 			if(mode == Worker::Stream)
 				outStream = request.stream;
@@ -235,10 +239,6 @@ public:
 				QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
 				return;
 			}
-
-			// fire and forget
-			if(mode == Worker::Stream && toAddress.isEmpty())
-				quiet = true;
 
 			// can't use these two together
 			if(mode == Worker::Single && request.more)
