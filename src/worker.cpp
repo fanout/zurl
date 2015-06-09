@@ -201,6 +201,12 @@ public:
 			return;
 		}
 
+		int defaultPort;
+		if(scheme == "https" || scheme == "wss")
+			defaultPort = 443;
+		else // http || wss
+			defaultPort = 80;
+
 		HttpHeaders headers = request.headers;
 
 		if(transport == HttpTransport)
@@ -253,6 +259,16 @@ public:
 				return;
 			}
 
+			QByteArray hostHeader = request.uri.host().toUtf8();
+
+			// only tack on the port if it isn't being overridden
+			int port = request.uri.port(defaultPort);
+			if(request.connectPort == -1 && port != defaultPort)
+				hostHeader += ":" + QByteArray::number(port);
+
+			headers.removeAll("Host");
+			headers += HttpHeader("Host", hostHeader);
+
 			hreq = new HttpRequest(dns, this);
 			connect(hreq, SIGNAL(nextAddress(const QHostAddress &)), SLOT(req_nextAddress(const QHostAddress &)));
 			connect(hreq, SIGNAL(readyRead()), SLOT(req_readyRead()));
@@ -268,9 +284,6 @@ public:
 
 			if(request.credits != -1)
 				outCredits += request.credits;
-
-			headers.removeAll("Host");
-			headers += HttpHeader("Host", request.uri.host().toUtf8());
 
 			if(!headers.contains("Content-Length"))
 			{
