@@ -664,7 +664,8 @@ private slots:
 	{
 		Worker *w = (Worker *)sender();
 
-		streamWorkersByRid.remove(w->rid());
+		if(!w->rid().isEmpty())
+			streamWorkersByRid.remove(w->rid());
 		reqHeadersByWorker.remove(w);
 		workers.remove(w);
 

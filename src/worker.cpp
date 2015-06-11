@@ -154,7 +154,6 @@ public:
 
 			QVariantHash vhash = vrequest.toHash();
 			rid = vhash.value("id").toByteArray();
-			assert(!rid.isEmpty()); // app layer ensures this
 			toAddress = vhash.value("from").toByteArray();
 			QByteArray type = vhash.value("type").toByteArray();
 			if(!toAddress.isEmpty() && type != "error" && type != "cancel")
@@ -611,8 +610,10 @@ public:
 	void writeResponse(const ZhttpResponsePacket &resp)
 	{
 		ZhttpResponsePacket out = resp;
-		out.from = config->clientId;
-		out.id = rid;
+		if(!toAddress.isEmpty())
+			out.from = config->clientId;
+		if(!rid.isEmpty())
+			out.id = rid;
 		out.seq = outSeq++;
 		out.userData = userData;
 
