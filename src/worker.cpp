@@ -420,13 +420,24 @@ public:
 				bodySent = true;
 				hreq->endBody();
 			}
-			else
+
+			if(mode == Stream)
 			{
-				// send cts
-				ZhttpResponsePacket resp;
-				resp.type = ZhttpResponsePacket::Credit;
-				resp.credits = config->sessionBufferSize;
-				writeResponse(resp);
+				if(request.more)
+				{
+					// send cts
+					ZhttpResponsePacket resp;
+					resp.type = ZhttpResponsePacket::Credit;
+					resp.credits = config->sessionBufferSize;
+					writeResponse(resp);
+				}
+				else
+				{
+					// send ack
+					ZhttpResponsePacket resp;
+					resp.type = ZhttpResponsePacket::KeepAlive;
+					writeResponse(resp);
+				}
 			}
 		}
 		else // WebSocketTransport
