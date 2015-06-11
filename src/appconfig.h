@@ -29,7 +29,7 @@ public:
 	QStringList allowExps, denyExps;
 	int maxWorkers;
 	int sessionBufferSize;
-	int sessionTimeout;
+	int activityTimeout;
 };
 
 #endif

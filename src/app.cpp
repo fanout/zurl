@@ -314,7 +314,7 @@ public:
 		QString ipcFileModeStr = settings.value("ipc_file_mode").toString();
 		config.maxWorkers = settings.value("max_open_requests", -1).toInt();
 		config.sessionBufferSize = settings.value("buffer_size", 200000).toInt();
-		config.sessionTimeout = settings.value("timeout", 600).toInt();
+		config.activityTimeout = settings.value("timeout", 600).toInt();
 		int inHwm = settings.value("in_hwm", 1000).toInt();
 		int outHwm = settings.value("out_hwm", 1000).toInt();
 

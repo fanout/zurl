@@ -56,6 +56,7 @@ public:
 	QVariant userData;
 	int maxResponseSize;
 	bool ignorePolicies;
+	int sessionTimeout;
 	HttpRequest *hreq;
 	WebSocket *ws;
 	bool quiet;
@@ -66,7 +67,8 @@ public:
 	int bytesReceived;
 	bool pendingSend;
 	QTimer *expireTimer;
-	QTimer *httpExpireTimer;
+	QTimer *httpActivityTimer;
+	QTimer *httpSessionTimer;
 	QTimer *keepAliveTimer;
 	WebSocket::Frame::Type lastReceivedFrameType;
 	bool wsSendingMessage;
@@ -84,7 +86,8 @@ public:
 		ws(0),
 		pendingSend(false),
 		expireTimer(0),
-		httpExpireTimer(0),
+		httpActivityTimer(0),
+		httpSessionTimer(0),
 		keepAliveTimer(0),
 		lastReceivedFrameType(WebSocket::Frame::Text),
 		wsSendingMessage(false),
@@ -113,12 +116,20 @@ public:
 			expireTimer = 0;
 		}
 
-		if(httpExpireTimer)
+		if(httpActivityTimer)
 		{
-			httpExpireTimer->disconnect(this);
-			httpExpireTimer->setParent(0);
-			httpExpireTimer->deleteLater();
-			httpExpireTimer = 0;
+			httpActivityTimer->disconnect(this);
+			httpActivityTimer->setParent(0);
+			httpActivityTimer->deleteLater();
+			httpActivityTimer = 0;
+		}
+
+		if(httpSessionTimer)
+		{
+			httpSessionTimer->disconnect(this);
+			httpSessionTimer->setParent(0);
+			httpSessionTimer->deleteLater();
+			httpSessionTimer = 0;
 		}
 
 		if(keepAliveTimer)
@@ -274,7 +285,10 @@ public:
 			connect(hreq, SIGNAL(readyRead()), SLOT(req_readyRead()));
 			connect(hreq, SIGNAL(bytesWritten(int)), SLOT(req_bytesWritten(int)));
 			connect(hreq, SIGNAL(error()), SLOT(req_error()));
+
 			maxResponseSize = request.maxSize;
+			sessionTimeout = request.timeout;
+
 			if(!request.connectHost.isEmpty())
 				hreq->setConnectHost(request.connectHost);
 			if(request.connectPort != -1)
@@ -367,10 +381,18 @@ public:
 				outCredits += request.credits;
 		}
 
-		httpExpireTimer = new QTimer(this);
-		connect(httpExpireTimer, SIGNAL(timeout()), SLOT(httpExpire_timeout()));
-		httpExpireTimer->setSingleShot(true);
-		httpExpireTimer->start(config->sessionTimeout * 1000);
+		httpActivityTimer = new QTimer(this);
+		connect(httpActivityTimer, SIGNAL(timeout()), SLOT(httpActivity_timeout()));
+		httpActivityTimer->setSingleShot(true);
+		httpActivityTimer->start(config->activityTimeout * 1000);
+
+		if(sessionTimeout != -1)
+		{
+			httpSessionTimer = new QTimer(this);
+			connect(httpSessionTimer, SIGNAL(timeout()), SLOT(httpSession_timeout()));
+			httpSessionTimer->setSingleShot(true);
+			httpSessionTimer->start(sessionTimeout);
+		}
 
 		if(transport == WebSocketTransport || (transport == HttpTransport && mode == Worker::Stream))
 		{
@@ -472,7 +494,7 @@ public:
 					return;
 				}
 
-				refreshHttpTimeout();
+				refreshActivityTimeout();
 
 				if(!request.body.isEmpty())
 					hreq->writeBody(request.body);
@@ -489,7 +511,7 @@ public:
 		{
 			if(request.type == ZhttpRequestPacket::Data || request.type == ZhttpRequestPacket::Close || request.type == ZhttpRequestPacket::Ping || request.type == ZhttpRequestPacket::Pong)
 			{
-				refreshHttpTimeout();
+				refreshActivityTimeout();
 
 				if(request.type == ZhttpRequestPacket::Data)
 				{
@@ -613,9 +635,9 @@ public:
 		expireTimer->start(SESSION_EXPIRE);
 	}
 
-	void refreshHttpTimeout()
+	void refreshActivityTimeout()
 	{
-		httpExpireTimer->start(config->sessionTimeout * 1000);
+		httpActivityTimer->start(config->activityTimeout * 1000);
 	}
 
 	void tryCleanup()
@@ -815,7 +837,7 @@ private slots:
 
 	void req_readyRead()
 	{
-		refreshHttpTimeout();
+		refreshActivityTimeout();
 
 		stuffToRead = true;
 
@@ -886,7 +908,7 @@ private slots:
 
 	void ws_connected()
 	{
-		refreshHttpTimeout();
+		refreshActivityTimeout();
 
 		ZhttpResponsePacket resp;
 		resp.type = ZhttpResponsePacket::Data;
@@ -899,7 +921,7 @@ private slots:
 
 	void ws_readyRead()
 	{
-		refreshHttpTimeout();
+		refreshActivityTimeout();
 
 		stuffToRead = true;
 
@@ -980,7 +1002,12 @@ private slots:
 		emit q->finished();
 	}
 
-	void httpExpire_timeout()
+	void httpActivity_timeout()
+	{
+		respondError("session-timeout");
+	}
+
+	void httpSession_timeout()
 	{
 		respondError("session-timeout");
 	}
