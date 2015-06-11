@@ -295,6 +295,8 @@ public:
 				request.uri.setPort(request.connectPort);
 
 			hreq->setIgnoreTlsErrors(request.ignoreTlsErrors);
+			if(request.followRedirects)
+				hreq->setFollowRedirects(8);
 
 			if(request.credits != -1)
 				outCredits += request.credits;
@@ -897,6 +899,8 @@ private slots:
 				condition = "connection-timeout"; break;
 			case HttpRequest::ErrorBodyNotAllowed:
 				condition = "content-not-allowed"; break;
+			case HttpRequest::ErrorTooManyRedirects:
+				condition = "too-many-redirects"; break;
 			case HttpRequest::ErrorGeneric:
 			default:
 				condition = "undefined-condition";

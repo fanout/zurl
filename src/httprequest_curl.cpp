@@ -346,7 +346,48 @@ public:
 			len = size - 1;
 
 		QByteArray line(p, len);
-		if(line.isEmpty())
+		if(!line.isEmpty())
+		{
+			if(haveResponseHeaders)
+			{
+				// does it look like we're getting a status
+				//   line again? (happens when redirecting)
+				int at = line.indexOf(' ');
+				if(at != -1 && !line.mid(0, at).contains(':'))
+				{
+					haveStatusLine = false;
+					haveResponseHeaders = false;
+					responseHeaders.clear();
+				}
+			}
+
+			if(!haveResponseHeaders)
+			{
+				if(haveStatusLine)
+				{
+					int at = line.indexOf(": ");
+					if(at == -1)
+						return -1;
+
+					log_debug("response header: %s", line.data());
+					responseHeaders += HttpHeader(line.mid(0, at), line.mid(at + 2));
+				}
+				else
+				{
+					// status reason we have to parse ourselves
+					int at = line.indexOf(' ');
+					if(at == -1)
+						return -1;
+					at = line.indexOf(' ', at + 1);
+					if(at == -1)
+						return -1;
+					responseReason = line.mid(at + 1);
+
+					haveStatusLine = true;
+				}
+			}
+		}
+		else
 		{
 			haveResponseHeaders = true;
 
@@ -370,31 +411,6 @@ public:
 
 				// tell the app we've got the header block
 				update();
-			}
-		}
-		else if(!haveResponseHeaders)
-		{
-			if(haveStatusLine)
-			{
-				int at = line.indexOf(": ");
-				if(at == -1)
-					return -1;
-
-				log_debug("response header: %s", line.data());
-				responseHeaders += HttpHeader(line.mid(0, at), line.mid(at + 2));
-			}
-			else
-			{
-				// status reason we have to parse ourselves
-				int at = line.indexOf(' ');
-				if(at == -1)
-					return -1;
-				at = line.indexOf(' ', at + 1);
-				if(at == -1)
-					return -1;
-				responseReason = line.mid(at + 1);
-
-				haveStatusLine = true;
 			}
 		}
 
@@ -654,6 +670,7 @@ public:
 	QJDnsShared *dns;
 	QString connectHost;
 	bool ignoreTlsErrors;
+	int maxRedirects;
 	HttpRequest::ErrorCondition errorCondition;
 	QString method;
 	QUrl uri;
@@ -670,6 +687,7 @@ public:
 		q(_q),
 		dns(_dns),
 		ignoreTlsErrors(false),
+		maxRedirects(-1),
 		errorCondition(HttpRequest::ErrorNone),
 		mostSignificantError(HttpRequest::ErrorGeneric),
 		ignoreBody(false),
@@ -892,6 +910,12 @@ private slots:
 			curl_easy_setopt(conn->easy, CURLOPT_SSL_VERIFYHOST, 0);
 		}
 
+		if(maxRedirects >= 0)
+		{
+			curl_easy_setopt(conn->easy, CURLOPT_FOLLOWLOCATION, 1);
+			curl_easy_setopt(conn->easy, CURLOPT_MAXREDIRS, maxRedirects);
+		}
+
 		handleAdded = true;
 		curl_multi_add_handle(g_man->multi, conn->easy);
 
@@ -944,6 +968,9 @@ private slots:
 					// NOTE: if we get this then there may be a chance the request
 					//   was actually sent off
 					curError = HttpRequest::ErrorTimeout;
+					break;
+				case CURLE_TOO_MANY_REDIRECTS:
+					curError = HttpRequest::ErrorTooManyRedirects;
 					break;
 				default:
 					tryAgain = false;
@@ -1010,6 +1037,11 @@ void HttpRequest::setConnectHost(const QString &host)
 void HttpRequest::setIgnoreTlsErrors(bool on)
 {
 	d->ignoreTlsErrors = on;
+}
+
+void HttpRequest::setFollowRedirects(int maxRedirects)
+{
+	d->maxRedirects = maxRedirects;
 }
 
 void HttpRequest::start(const QString &method, const QUrl &uri, const HttpHeaders &headers)

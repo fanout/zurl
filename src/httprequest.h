@@ -38,7 +38,8 @@ public:
 		ErrorConnect,
 		ErrorTls,
 		ErrorTimeout,
-		ErrorBodyNotAllowed
+		ErrorBodyNotAllowed,
+		ErrorTooManyRedirects
 	};
 
 	HttpRequest(QJDnsShared *dns, QObject *parent = 0);
@@ -46,6 +47,7 @@ public:
 
 	void setConnectHost(const QString &host);
 	void setIgnoreTlsErrors(bool on);
+	void setFollowRedirects(int maxRedirects); // -1 to disable
 
 	void start(const QString &method, const QUrl &uri, const HttpHeaders &headers = HttpHeaders());
 

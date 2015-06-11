@@ -15,6 +15,7 @@ req = dict()
 req['id'] = str(uuid.uuid4())
 req['method'] = 'GET'
 req['uri'] = sys.argv[1]
+#req['follow-redirects'] = True
 #req['ignore-tls-errors'] = True
 sock.send('T' + tnetstring.dumps(req))
 
