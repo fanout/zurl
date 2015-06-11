@@ -118,6 +118,10 @@ public:
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			curl_easy_setopt(easy, CURLOPT_VERBOSE, 1);
+
+#if LIBCURL_VERSION_NUM >= 0x072a00
+		curl_easy_setopt(easy, CURLOPT_PATH_AS_IS, 1);
+#endif
 	}
 
 	~CurlConnection()
