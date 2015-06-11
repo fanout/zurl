@@ -61,6 +61,7 @@ public:
 	CURLSH *share;
 	CURL *easy;
 	QString method;
+	int maxRedirects;
 	bool expectBody;
 	bool bodyReadFrom;
 	struct curl_slist *dnsCache;
@@ -81,6 +82,7 @@ public:
 	CURLcode result;
 
 	CurlConnection() :
+		maxRedirects(-1),
 		expectBody(false),
 		bodyReadFrom(false),
 		dnsCache(NULL),
@@ -179,7 +181,7 @@ public:
 		}
 	}
 
-	void setup(const QUrl &uri, const HttpHeaders &_headers, const QHostAddress &connectAddr = QHostAddress(), int connectPort = -1)
+	void setup(const QUrl &uri, const HttpHeaders &_headers, const QHostAddress &connectAddr = QHostAddress(), int connectPort = -1, int _maxRedirects = -1)
 	{
 		assert(!method.isEmpty());
 
@@ -232,6 +234,13 @@ public:
 		// disable expect usage as it appears to be buggy
 		curl_slist_append(headersList, "Expect:");
 		curl_easy_setopt(easy, CURLOPT_HTTPHEADER, headersList);
+
+		maxRedirects = _maxRedirects;
+		if(maxRedirects >= 0)
+		{
+			curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1);
+			curl_easy_setopt(easy, CURLOPT_MAXREDIRS, maxRedirects);
+		}
 	}
 
 	void update()
@@ -401,17 +410,27 @@ public:
 				log_debug("got code 100, ignoring this header block");
 				haveStatusLine = false;
 				haveResponseHeaders = false;
+				responseHeaders.clear();
+				return size;
 			}
-			else
-			{
-				// if a content-encoding was used, don't provide content-length
-				QByteArray contentEncoding = responseHeaders.get("Content-Encoding");
-				if(!contentEncoding.isEmpty() && contentEncoding != "identity")
-					responseHeaders.removeAll("Content-Length");
 
-				// tell the app we've got the header block
-				update();
+			if(maxRedirects >= 0 && responseCode >= 300 && responseCode < 400 && responseHeaders.contains("Location"))
+			{
+				log_debug("got code 3xx and redirects enabled, ignoring this header block");
+				haveStatusLine = false;
+				haveResponseHeaders = false;
+				responseHeaders.clear();
+				return size;
 			}
+
+			// if a content-encoding was used, don't provide content-length
+			QByteArray contentEncoding = responseHeaders.get("Content-Encoding");
+			if(!contentEncoding.isEmpty() && contentEncoding != "identity")
+				responseHeaders.removeAll("Content-Length");
+
+			// tell the app we've got the header block
+			newlyReadOrEof = true;
+			update();
 		}
 
 		return size;
@@ -902,18 +921,12 @@ private slots:
 		if(!self)
 			return;
 
-		conn->setup(uri, headers, addr);
+		conn->setup(uri, headers, addr, -1, maxRedirects);
 
 		if(ignoreTlsErrors)
 		{
 			curl_easy_setopt(conn->easy, CURLOPT_SSL_VERIFYPEER, 0);
 			curl_easy_setopt(conn->easy, CURLOPT_SSL_VERIFYHOST, 0);
-		}
-
-		if(maxRedirects >= 0)
-		{
-			curl_easy_setopt(conn->easy, CURLOPT_FOLLOWLOCATION, 1);
-			curl_easy_setopt(conn->easy, CURLOPT_MAXREDIRS, maxRedirects);
 		}
 
 		handleAdded = true;
