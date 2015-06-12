@@ -222,7 +222,7 @@ public:
 		if(transport == HttpTransport)
 		{
 			// fire and forget
-			if(mode == Worker::Stream && toAddress.isEmpty())
+			if(mode == Worker::Stream && (rid.isEmpty() || toAddress.isEmpty()))
 				quiet = true;
 
 			// streaming only allowed on streaming interface

@@ -518,17 +518,19 @@ public:
 
 		if(type == InInit || type == InStream)
 		{
-			// the in/instream interface requires ids on packets
+			// try to get the id
 			QVariantHash vhash = data.toHash();
 			rid = vhash.value("id").toByteArray();
-			if(rid.isEmpty())
-			{
-				log_warning("received stream message without request id, skipping");
-				return;
-			}
 
 			if(type == InStream)
 			{
+				// instream interface requires ids on packets
+				if(rid.isEmpty())
+				{
+					log_warning("received stream message without request id, skipping");
+					return;
+				}
+
 				Worker *w = streamWorkersByRid.value(rid);
 				if(!w)
 				{
@@ -544,7 +546,7 @@ public:
 				return;
 			}
 
-			if(streamWorkersByRid.contains(rid))
+			if(!rid.isEmpty() && streamWorkersByRid.contains(rid))
 			{
 				log_warning("received request for id already in use, skipping");
 				return;
@@ -557,9 +559,9 @@ public:
 
 		workers += w;
 
-		if(type == InInit)
+		if(type == InInit && !rid.isEmpty())
 			streamWorkersByRid[rid] = w;
-		else // InReq
+		else if(type == InReq)
 			reqHeadersByWorker[w] = reqHeaders;
 
 		if(config.maxWorkers != -1 && workers.count() >= config.maxWorkers)
