@@ -8,6 +8,7 @@ Description
 
 Zurl is an HTTP and WebSocket client daemon with a ZeroMQ interface. To make an asynchronous HTTP request, simply send a message to Zurl using your favorite language.
 
+For example, here's some Python:
 ```python
 import json
 import zmq
@@ -27,7 +28,7 @@ sock.send('J' + json.dumps(req))
 print json.loads(sock.recv()[1:])
 ```
 
-Every language can already make HTTP requests directly, so what good is this? Zurl is mainly useful for implementing Webhooks, because applications don't need to keep state or worry about concurrency. Zurl even offers protection from evil URLs.
+Every language can already make HTTP requests directly, so what good is this? Zurl is mainly useful for implementing Webhooks, because applications don't need to keep state nor worry about concurrency. Zurl even offers protection from [evil URLs](http://blog.fanout.io/2014/01/27/how-to-safely-invoke-webhooks/).
 
 Zurl can also make sense as part of a greater ZeroMQ-based architecture, where you want to integrate HTTP itself into your pipeline.
 
@@ -76,6 +77,71 @@ Run:
     cp zurl.conf.example zurl.conf
     ./zurl --verbose --config=zurl.conf
 
-Test:
+Message Format
+--------------
 
-    python tools/get.py https://fanout.io/
+Requests and response messages are encoded in JSON or TNetStrings format. The format type is indicated by prefixing the encoded output with either a 'J' character or a 'T' character, respectively.
+
+For example, a request message in JSON format might look like this:
+
+```
+J{"method":"GET","uri":"http://example.com/"}
+```
+
+Here's an example of the same request in TNetStrings format:
+
+```
+T44:6:method,3:GET,3:uri,19:http://example.com/,}
+```
+
+Here's what a response might look like:
+
+```
+J{"code":"200","reason":"OK","headers":[...],"body":"hello\n"}
+```
+
+Zurl always replies using the same format that was used in the request. If you need to send and receive binary content, you'll need to use TNetString format rather than JSON (Zurl does not attempt to Base64-encode binary content over JSON or anything like that).
+
+Requests may have a number of fields. Here are the main ones:
+
+* ``id`` - Unique ID among requests sent.
+* ``method`` - The HTTP method to use.
+* ``uri`` - The full URI to make the request to, e.g. scheme://domain.com/path?query
+* ``headers`` - The request headers, either as a dictionary or as a list of two-item lists.
+* ``body`` - The request body content.
+
+Only ``method`` and ``uri`` are required. Headers are not strictly required, not even ``Content-Length`` as Zurl will set that header for you. If ``body`` is unspecified, it is assumed to be empty. If you are using a REQ socket to speak with Zurl, then you can probably get away with having no ``id`` field. However, if you use DEALER for multiplexing, then you'll need to ID your requests in order to be able to match them to responses.
+
+Additional request fields:
+
+* ``user-data`` - Arbitrary data to be echoed back in the response message. It's a handy way to ship off state with the request, if the response will be handled by a separate process.
+* ``max-size`` - Don't accept a response body larger than this value.
+* ``connect-host`` - Override the host to connect to. The outgoing ``Host`` header will still be derived from the URI.
+* ``connect-port`` - Override the port to connect to.
+* ``ignore-policies`` - Ignore any rules about what requests are allowed (i.e. bypass Zurl's allow/deny rules).
+* ``ignore-tls-errors`` - Ignore the certificate of the server when using HTTPS or WSS.
+* ``follow-redirects`` - If a 3xx response code with a ``Location`` header is received, follow the redirect (up to 8 redirects before failing).
+* ``timeout`` - Maximum time in milliseconds for the entire request/response operation.
+
+Responses may have the following fields:
+
+* ``id`` - The ID of the request.
+* ``type`` - Either ommitted or with value ``error``, meaning the request failed in some way.
+* ``condition`` - In an error response, this is a short, machine-parsable string indicating the reason for the error.
+* ``code`` - The HTTP status code.
+* ``reason`` - The HTTP status reason (e.g. "OK").
+* ``headers`` - The response headers as a list of two-item lists.
+* ``body`` - The response body content.
+* ``user-data`` - If this field was specified in the request, then it will be included in the response.
+
+Sockets
+-------
+
+For basic usage, connect to Zurl's request-based interface using a REQ socket (ipc:///tmp/zurl-req by default, see your zurl.conf). To make a request, send a message over the socket. To receive the response, read from the socket.
+
+For advanced usage you can connect to Zurl's streaming interface using PUSH, ROUTER, and SUB sockets. See tools/getstream.py as an example or check out the [ZHTTP draft spec](http://rfc.zeromq.org/spec:33) for details.
+
+WebSockets
+----------
+
+Creating a WebSocket connection through Zurl uses a variant of the ZHTTP protocol. Zurl's streaming interface must be used in this case. The protocol is not documented, yet but you can see tools/wsecho.py as an example.
