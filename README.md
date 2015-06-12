@@ -6,9 +6,9 @@ Mailing List: http://lists.fanout.io/listinfo.cgi/fanout-users-fanout.io
 Description
 -----------
 
-Zurl is an HTTP and WebSocket client daemon with a ZeroMQ interface. It lets you use messages to make asynchronous HTTP requests!
+Zurl is an HTTP and WebSocket client daemon with a ZeroMQ interface. Send it a message to make an HTTP request.
 
-Simply exchange messages with Zurl using your favorite language. For example, here's some Python:
+For example, here's how to make a request using Python:
 
 ```python
 import json
@@ -29,11 +29,11 @@ sock.send('J' + json.dumps(req))
 print json.loads(sock.recv()[1:])
 ```
 
-Every language can already make HTTP requests directly, so what good is this? Zurl is mainly useful for implementing Webhooks, because applications don't need to keep state nor worry about concurrency. Zurl even offers protection from [evil URLs](http://blog.fanout.io/2014/01/27/how-to-safely-invoke-webhooks/).
+Since every language can already make HTTP requests directly, you might wonder what value there is in delegating the work to a separate process like this. Zurl is mainly useful for implementing Webhooks, because applications don't need to keep state nor worry about concurrency. Zurl even offers protection from [evil URLs](http://blog.fanout.io/2014/01/27/how-to-safely-invoke-webhooks/).
 
 Zurl can also make sense as part of a greater ZeroMQ-based architecture, where you want to integrate HTTP itself into your pipeline.
 
-See [Fun With Zurl](http://blog.fanout.io/2014/02/18/fun-with-zurl-the-http-websocket-client-daemon/) for some wild possibilities that a message-oriented HTTP client daemon can bring. We hope you will be either inspired or horrified.
+See [Fun With Zurl](http://blog.fanout.io/2014/02/18/fun-with-zurl-the-http-websocket-client-daemon/) for some wild possibilities that a message-oriented HTTP client daemon can bring.
 
 License
 -------
