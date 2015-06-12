@@ -145,4 +145,4 @@ For advanced usage you can connect to Zurl's streaming interface using PUSH, ROU
 WebSockets
 ----------
 
-Creating a WebSocket connection through Zurl uses a variant of the ZHTTP protocol. Zurl's streaming interface must be used in this case. The protocol is not documented, yet but you can see tools/wsecho.py as an example.
+Creating a WebSocket connection through Zurl uses a variant of the ZHTTP protocol. Zurl's streaming interface must be used in this case. The protocol is not documented yet, but you can see tools/wsecho.py as an example.
