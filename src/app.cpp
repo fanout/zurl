@@ -86,12 +86,12 @@ static bool convertToJsonStyleInPlace(QVariant *in)
 		for(int n = 0; n < vlist.count(); ++n)
 		{
 			QVariant i = vlist.at(n);
-			if(convertToJsonStyleInPlace(&i))
-			{
-				vlist[n] = i;
-				changed = true;
-			}
+			convertToJsonStyleInPlace(&i);
+			vlist[n] = i;
 		}
+
+		*in = vlist;
+		changed = true;
 	}
 	else if(type == QVariant::ByteArray)
 	{
@@ -133,16 +133,21 @@ static bool convertFromJsonStyleInPlace(QVariant *in)
 		for(int n = 0; n < vlist.count(); ++n)
 		{
 			QVariant i = vlist.at(n);
-			if(convertFromJsonStyleInPlace(&i))
-			{
-				vlist[n] = i;
-				changed = true;
-			}
+			convertFromJsonStyleInPlace(&i);
+			vlist[n] = i;
 		}
+
+		*in = vlist;
+		changed = true;
 	}
 	else if(type == QVariant::String)
 	{
 		*in = QVariant(in->toString().toUtf8());
+		changed = true;
+	}
+	else if(type != QVariant::Double && in->canConvert(QVariant::Int))
+	{
+		*in = in->toInt();
 		changed = true;
 	}
 
