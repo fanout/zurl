@@ -6,9 +6,10 @@ Mailing List: http://lists.fanout.io/listinfo.cgi/fanout-users-fanout.io
 Description
 -----------
 
-Zurl is an HTTP and WebSocket client daemon with a ZeroMQ interface. To make an asynchronous HTTP request, simply send a message to Zurl using your favorite language.
+Zurl is an HTTP and WebSocket client daemon with a ZeroMQ interface. It lets you use messages to make asynchronous HTTP requests!
 
-For example, here's some Python:
+Simply exchange messages with Zurl using your favorite language. For example, here's some Python:
+
 ```python
 import json
 import zmq
