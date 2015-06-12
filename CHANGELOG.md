@@ -1,6 +1,10 @@
 Zurl Changelog
 ==============
 
+v. 1.4.1 (2015-06-12)
+
+  * Fix type conversions when using JSON as the message format.
+
 v. 1.4.0 (2015-06-11)
 
   * follow-redirects option.
