@@ -145,7 +145,7 @@ static bool convertFromJsonStyleInPlace(QVariant *in)
 		*in = QVariant(in->toString().toUtf8());
 		changed = true;
 	}
-	else if(type != QVariant::Double && in->canConvert(QVariant::Int))
+	else if(type != QVariant::Bool && type != QVariant::Double && in->canConvert(QVariant::Int))
 	{
 		*in = in->toInt();
 		changed = true;
