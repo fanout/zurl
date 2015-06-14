@@ -27,6 +27,7 @@
 #include "log.h"
 
 #define BUFFER_SIZE 200000
+#define REQUEST_BODY_BUFFER_MAX 1000000
 
 // workaround for earlier curl versions
 #define UNPAUSE_WORKAROUND 1
@@ -69,6 +70,7 @@ public:
 	int pauseBits;
 	BufferList in;
 	BufferList out;
+	int outPos;
 	bool inFinished;
 	bool outFinished;
 	bool haveStatusLine;
@@ -88,6 +90,7 @@ public:
 		dnsCache(NULL),
 		headersList(NULL),
 		pauseBits(0),
+		outPos(0),
 		inFinished(false),
 		outFinished(false),
 		haveStatusLine(false),
@@ -111,6 +114,8 @@ public:
 		curl_easy_setopt(easy, CURLOPT_WRITEDATA, this);
 		curl_easy_setopt(easy, CURLOPT_READFUNCTION, readFunction_cb);
 		curl_easy_setopt(easy, CURLOPT_READDATA, this);
+		curl_easy_setopt(easy, CURLOPT_SEEKFUNCTION, seekFunction_cb);
+		curl_easy_setopt(easy, CURLOPT_SEEKDATA, this);
 		curl_easy_setopt(easy, CURLOPT_HEADERFUNCTION, headerFunction_cb);
 		curl_easy_setopt(easy, CURLOPT_HEADERDATA, this);
 
@@ -241,6 +246,8 @@ public:
 			curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1);
 			curl_easy_setopt(easy, CURLOPT_MAXREDIRS, maxRedirects);
 		}
+
+		curl_easy_setopt(easy, CURLOPT_POSTREDIR, CURL_REDIR_POST_ALL);
 	}
 
 	void update()
@@ -269,6 +276,12 @@ public:
 	{
 		CurlConnection *self = (CurlConnection *)userdata;
 		return self->readFunction((char *)ptr, size * nmemb);
+	}
+
+	static int seekFunction_cb(void *userdata, curl_off_t offset, int origin)
+	{
+		CurlConnection *self = (CurlConnection *)userdata;
+		return self->seekFunction(offset, origin);
 	}
 
 	static size_t headerFunction_cb(void *ptr, size_t size, size_t nmemb, void *userdata)
@@ -317,7 +330,18 @@ public:
 
 	size_t readFunction(char *p, size_t size)
 	{
-		QByteArray buf = out.take(size);
+		QByteArray buf;
+		if(outPos >= 0 && out.size() <= REQUEST_BODY_BUFFER_MAX)
+		{
+			buf = out.mid(outPos, size);
+			outPos += buf.size();
+		}
+		else
+		{
+			outPos = -1; // no longer buffered
+			buf = out.take(size);
+		}
+
 		if(!buf.isEmpty())
 		{
 			bodyReadFrom = true;
@@ -340,6 +364,35 @@ public:
 				pauseBits |= CURLPAUSE_SEND;
 				return CURL_READFUNC_PAUSE;
 			}
+		}
+	}
+
+	int seekFunction(curl_off_t offset, int origin)
+	{
+		if(outPos < 0)
+		{
+			log_debug("seekFunction: can't seek. input is unbuffered");
+			return 1;
+		}
+
+		if(origin == SEEK_SET)
+		{
+			if(offset <= out.size())
+			{
+				outPos = offset;
+				log_debug("seekFunction: seeking to position %ld", offset);
+				return 0;
+			}
+			else
+			{
+				log_debug("seekFunction: %ld out of range (range: 0-%d)", offset, out.size());
+				return 1;
+			}
+		}
+		else
+		{
+			log_debug("seekFunction: unknown origin value: %d", origin);
+			return 1;
 		}
 	}
 
