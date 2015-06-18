@@ -1,6 +1,11 @@
 Zurl Changelog
 ==============
 
+v. 1.4.2 (2015-06-18)
+
+  * Support redirects when there is a request body.
+  * Fix bool types when using JSON as the message format.
+
 v. 1.4.1 (2015-06-12)
 
   * Fix type conversions when using JSON as the message format.
