@@ -299,28 +299,6 @@ public:
 
 			if(request.credits != -1)
 				outCredits += request.credits;
-
-			if(!headers.contains("Content-Length"))
-			{
-				if(request.more)
-				{
-					// ensure chunked encoding
-					headers.removeAll("Transfer-Encoding");
-					headers += HttpHeader("Transfer-Encoding", "chunked");
-				}
-				else
-				{
-					// ensure content-length
-					if(!request.body.isEmpty() ||
-						(request.method != "OPTIONS" &&
-						request.method != "HEAD" &&
-						request.method != "GET" &&
-						request.method != "DELETE"))
-					{
-						headers += HttpHeader("Content-Length", QByteArray::number(request.body.size()));
-					}
-				}
-			}
 		}
 		else // WebSocketTransport
 		{
@@ -409,16 +387,23 @@ public:
 
 		if(transport == HttpTransport)
 		{
-			hreq->start(request.method, request.uri, headers);
+			bool hasOrMightHaveBody = (!request.body.isEmpty() || request.more);
 
-			if(!request.body.isEmpty())
-				hreq->writeBody(request.body);
+			hreq->start(request.method, request.uri, headers, hasOrMightHaveBody);
 
-			if(!request.more)
+			if(hasOrMightHaveBody)
 			{
-				bodySent = true;
-				hreq->endBody();
+				if(!request.body.isEmpty())
+					hreq->writeBody(request.body);
+
+				if(!request.more)
+				{
+					bodySent = true;
+					hreq->endBody();
+				}
 			}
+			else
+				bodySent = true;
 
 			if(mode == Stream)
 			{
