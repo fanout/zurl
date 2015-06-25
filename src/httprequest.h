@@ -49,7 +49,7 @@ public:
 	void setIgnoreTlsErrors(bool on);
 	void setFollowRedirects(int maxRedirects); // -1 to disable
 
-	void start(const QString &method, const QUrl &uri, const HttpHeaders &headers = HttpHeaders(), bool hasBody = true);
+	void start(const QString &method, const QUrl &uri, const HttpHeaders &headers = HttpHeaders(), bool willWriteBody = true);
 
 	// may call this multiple times
 	void writeBody(const QByteArray &body);

@@ -64,6 +64,7 @@ public:
 	QString method;
 	int maxRedirects;
 	bool expectBody;
+	bool alwaysSetBody;
 	bool bodyReadFrom;
 	struct curl_slist *dnsCache;
 	struct curl_slist *headersList;
@@ -86,6 +87,7 @@ public:
 	CurlConnection() :
 		maxRedirects(-1),
 		expectBody(false),
+		alwaysSetBody(false),
 		bodyReadFrom(false),
 		dnsCache(NULL),
 		headersList(NULL),
@@ -139,9 +141,11 @@ public:
 		curl_share_cleanup(share);
 	}
 
-	void setupMethod(const QString &_method)
+	void setupMethod(const QString &_method, bool _expectBody)
 	{
 		method = _method;
+		expectBody = _expectBody;
+		alwaysSetBody = false;
 
 		if(method == "OPTIONS")
 		{
@@ -155,35 +159,33 @@ public:
 		}
 		else if(method == "GET")
 		{
-			expectBody = false;
 			curl_easy_setopt(easy, CURLOPT_HTTPGET, 1);
 			curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, NULL);
 		}
 		else if(method == "POST")
 		{
-			expectBody = true;
+			alwaysSetBody = true;
 			//curl_easy_setopt(easy, CURLOPT_POST, 1);
 			//curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, NULL);
-			curl_easy_setopt(easy, CURLOPT_UPLOAD, 1);
 			curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, "POST");
 		}
 		else if(method == "PUT")
 		{
-			expectBody = true;
-			curl_easy_setopt(easy, CURLOPT_UPLOAD, 1);
+			alwaysSetBody = true;
 			curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, NULL);
 		}
 		else if(method == "DELETE")
 		{
-			expectBody = false;
 			curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, "DELETE");
 		}
 		else
 		{
-			expectBody = true;
-			curl_easy_setopt(easy, CURLOPT_UPLOAD, 1);
+			alwaysSetBody = true;
 			curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, method.toLatin1().data());
 		}
+
+		if(expectBody || alwaysSetBody)
+			curl_easy_setopt(easy, CURLOPT_UPLOAD, 1);
 	}
 
 	void setup(const QUrl &uri, const HttpHeaders &_headers, const QHostAddress &connectAddr = QHostAddress(), int connectPort = -1, int _maxRedirects = -1)
@@ -225,8 +227,13 @@ public:
 			// curl will set this for us
 			headers.removeAll("Content-Length");
 		}
-		else if(expectBody)
-			chunked = true;
+		else
+		{
+			if(expectBody)
+				chunked = true;
+			else if(alwaysSetBody)
+				curl_easy_setopt(easy, CURLOPT_INFILESIZE_LARGE, 0);
+		}
 
 		curl_slist_free_all(headersList);
 		foreach(const HttpHeader &h, headers)
@@ -234,8 +241,11 @@ public:
 			QByteArray i = h.first + ": " + h.second;
 			headersList = curl_slist_append(headersList, i.data());
 		}
-		if(chunked && !headers.contains("Transfer-Encoding"))
+
+		headers.removeAll("Transfer-Encoding");
+		if(chunked)
 			headersList = curl_slist_append(headersList, "Transfer-Encoding: chunked");
+
 		// disable expect usage as it appears to be buggy
 		curl_slist_append(headersList, "Expect:");
 		curl_easy_setopt(easy, CURLOPT_HTTPHEADER, headersList);
@@ -747,6 +757,7 @@ public:
 	QString method;
 	QUrl uri;
 	HttpHeaders headers;
+	bool willWriteBody;
 	QString host;
 	QList<QHostAddress> addrs;
 	HttpRequest::ErrorCondition mostSignificantError;
@@ -761,6 +772,7 @@ public:
 		ignoreTlsErrors(false),
 		maxRedirects(-1),
 		errorCondition(HttpRequest::ErrorNone),
+		willWriteBody(false),
 		mostSignificantError(HttpRequest::ErrorGeneric),
 		ignoreBody(false),
 		conn(0),
@@ -802,13 +814,13 @@ public:
 			conn = new CurlConnection;
 			connect(conn, SIGNAL(updated()), SLOT(conn_updated()));
 
-			conn->setupMethod(method);
+			conn->setupMethod(method, willWriteBody);
 			conn->out = out;
 			conn->outFinished = outFinished;
 		}
 	}
 
-	void start(const QString &_method, const QUrl &_uri, const HttpHeaders &_headers)
+	void start(const QString &_method, const QUrl &_uri, const HttpHeaders &_headers, bool _willWriteBody)
 	{
 		if(_method.isEmpty() || (_uri.scheme() != "https" && _uri.scheme() != "http"))
 		{
@@ -824,6 +836,7 @@ public:
 		method = _method;
 		uri = _uri;
 		headers = _headers;
+		willWriteBody = _willWriteBody;
 
 		// eat any transport headers as they'd likely break things
 		headers.removeAll("Connection");
@@ -833,16 +846,21 @@ public:
 		headers.removeAll("Transfer-Encoding");
 		headers.removeAll("Expect");
 
-		conn->setupMethod(method);
+		conn->setupMethod(method, willWriteBody);
 
-		// if we aren't expecting a body, then we'll eat any input and start
+		// if the user will provide a body but we don't expect one
+		//   for the method type, then we'll eat any input and start
 		//   the connect after endBody() is called.
-		if(conn->expectBody)
-			startConnect();
+		if(willWriteBody && !conn->expectBody)
+			return;
+
+		startConnect();
 	}
 
 	void writeBody(const QByteArray &body)
 	{
+		assert(willWriteBody);
+
 		if(body.isEmpty() || ignoreBody)
 			return;
 
@@ -870,6 +888,8 @@ public:
 
 	void endBody()
 	{
+		assert(willWriteBody);
+
 		if(ignoreBody)
 			return;
 
@@ -877,10 +897,11 @@ public:
 
 		if(conn->expectBody)
 		{
+			conn->outFinished = true;
+
 			if(conn->pauseBits & CURLPAUSE_SEND)
 			{
 				log_debug("send unpausing");
-				conn->outFinished = true;
 				conn->pauseBits &= ~CURLPAUSE_SEND;
 				curl_easy_pause(conn->easy, conn->pauseBits);
 				g_man->update();
@@ -1110,9 +1131,9 @@ void HttpRequest::setFollowRedirects(int maxRedirects)
 	d->maxRedirects = maxRedirects;
 }
 
-void HttpRequest::start(const QString &method, const QUrl &uri, const HttpHeaders &headers)
+void HttpRequest::start(const QString &method, const QUrl &uri, const HttpHeaders &headers, bool willWriteBody)
 {
-	d->start(method, uri, headers);
+	d->start(method, uri, headers, willWriteBody);
 }
 
 void HttpRequest::writeBody(const QByteArray &body)
