@@ -33,6 +33,8 @@ public:
 	QTcpSocket *sock;
 	bool requestParsed;
 	QList<QByteArray> headerLines;
+	QByteArray requestMethod;
+	QByteArray requestUri;
 	HttpHeaders requestHeaders;
 
 	HttpServer(QObject *parent = 0) :
@@ -85,6 +87,8 @@ private slots:
 	{
 		requestParsed = false;
 		headerLines.clear();
+		requestMethod.clear();
+		requestUri.clear();
 		requestHeaders.clear();
 
 		sock = server->nextPendingConnection();
@@ -123,6 +127,9 @@ private slots:
 						assert(at != -1);
 						requestHeaders += HttpHeader(headerLines[n].mid(0, at), headerLines[n].mid(at + 2));
 					}
+
+					requestMethod = method;
+					requestUri = uri;
 
 					handleRequest(method, uri);
 				}
@@ -184,7 +191,7 @@ private slots:
 		req.endBody();
 		waitForSignal(&spy);
 
-		QVERIFY(req.errorCondition() == HttpRequest::ErrorConnect);
+		QCOMPARE(req.errorCondition(), HttpRequest::ErrorConnect);
 	}
 
 	void requestConnectError()
@@ -195,7 +202,7 @@ private slots:
 		req.endBody();
 		waitForSignal(&spy);
 
-		QVERIFY(req.errorCondition() == HttpRequest::ErrorConnect);
+		QCOMPARE(req.errorCondition(), HttpRequest::ErrorConnect);
 	}
 
 	void requestGet()
@@ -253,6 +260,7 @@ private slots:
 			QTest::qWait(10);
 		}
 
+		QCOMPARE(req.responseCode(), 200);
 		QCOMPARE(server->requestHeaders.get("Content-Length"), QByteArray("6"));
 	}
 
@@ -266,7 +274,60 @@ private slots:
 			QTest::qWait(10);
 		}
 
+		QCOMPARE(req.responseCode(), 200);
 		QCOMPARE(server->requestHeaders.get("Content-Length"), QByteArray("0"));
+	}
+
+	void requestHead()
+	{
+		HttpRequest req(dns);
+		req.start("HEAD", QString("http://localhost:%1/").arg(server->localPort()), HttpHeaders(), false);
+		while(!req.isFinished())
+		{
+			req.readResponseBody();
+			QTest::qWait(10);
+		}
+
+		QCOMPARE(req.responseCode(), 200);
+		QCOMPARE(server->requestMethod, QByteArray("HEAD"));
+		QVERIFY(!server->requestHeaders.contains("Content-Length"));
+		QVERIFY(!server->requestHeaders.contains("Transfer-Encoding"));
+	}
+
+	void requestHeadMaybeBody()
+	{
+		HttpRequest req(dns);
+		req.start("HEAD", QString("http://localhost:%1/").arg(server->localPort()), HttpHeaders());
+		QTest::qWait(10);
+		req.endBody();
+		while(!req.isFinished())
+		{
+			req.readResponseBody();
+			QTest::qWait(10);
+		}
+
+		QCOMPARE(req.responseCode(), 200);
+		QCOMPARE(server->requestMethod, QByteArray("HEAD"));
+		QVERIFY(!server->requestHeaders.contains("Content-Length"));
+		QVERIFY(!server->requestHeaders.contains("Transfer-Encoding"));
+	}
+
+	void requestHeadTryBody()
+	{
+		HttpRequest req(dns);
+		req.start("HEAD", QString("http://localhost:%1/").arg(server->localPort()), HttpHeaders());
+		req.writeBody("hello\n");
+		req.endBody();
+		while(!req.isFinished())
+		{
+			req.readResponseBody();
+			QTest::qWait(10);
+		}
+
+		QCOMPARE(req.errorCondition(), HttpRequest::ErrorBodyNotAllowed);
+		QCOMPARE(server->requestMethod, QByteArray("HEAD"));
+		QVERIFY(!server->requestHeaders.contains("Content-Length"));
+		QVERIFY(!server->requestHeaders.contains("Transfer-Encoding"));
 	}
 
 	void requestDeleteNoBody()
@@ -279,6 +340,7 @@ private slots:
 			QTest::qWait(10);
 		}
 
+		QCOMPARE(req.responseCode(), 200);
 		QVERIFY(!server->requestHeaders.contains("Content-Length"));
 		QVERIFY(!server->requestHeaders.contains("Transfer-Encoding"));
 	}
@@ -295,6 +357,7 @@ private slots:
 			QTest::qWait(10);
 		}
 
+		QCOMPARE(req.responseCode(), 200);
 		QVERIFY(!server->requestHeaders.contains("Content-Length"));
 		QCOMPARE(server->requestHeaders.get("Transfer-Encoding"), QByteArray("chunked"));
 	}
@@ -310,6 +373,7 @@ private slots:
 			QTest::qWait(10);
 		}
 
+		QCOMPARE(req.responseCode(), 200);
 		QVERIFY(!server->requestHeaders.contains("Content-Length"));
 		QCOMPARE(server->requestHeaders.get("Transfer-Encoding"), QByteArray("chunked"));
 	}

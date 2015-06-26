@@ -155,7 +155,7 @@ public:
 		else if(method == "HEAD")
 		{
 			expectBody = false;
-			curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, NULL);
+			curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, "HEAD");
 		}
 		else if(method == "GET")
 		{
@@ -172,6 +172,8 @@ public:
 		else if(method == "PUT")
 		{
 			alwaysSetBody = true;
+			// PUT is implied by the UPLOAD option, which we set
+			//   below
 			curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, NULL);
 		}
 		else if(method == "DELETE")
@@ -848,9 +850,9 @@ public:
 
 		conn->setupMethod(method, willWriteBody);
 
-		// if the user will provide a body but we don't expect one
-		//   for the method type, then we'll eat any input and start
-		//   the connect after endBody() is called.
+		// if the user might provide a body but we don't expect one
+		//   for the method type, then we'll wait and see what is
+		//   provided before starting the request.
 		if(willWriteBody && !conn->expectBody)
 			return;
 
