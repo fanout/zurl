@@ -1,6 +1,10 @@
 Zurl Changelog
 ==============
 
+v. 1.4.3 (2015-06-25)
+
+  * Allow request body with GET and DELETE.
+
 v. 1.4.2 (2015-06-18)
 
   * Support redirects when there is a request body.
