@@ -1,6 +1,10 @@
 Zurl Changelog
 ==============
 
+v. 1.4.4 (2015-06-26)
+
+  * Fix HEAD requests.
+
 v. 1.4.3 (2015-06-25)
 
   * Allow request body with GET and DELETE.
