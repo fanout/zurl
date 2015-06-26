@@ -103,7 +103,6 @@ private slots:
 				assert(line[line.length() - 1] == '\n');
 				line.truncate(line.length() - 2);
 
-				printf("line: [%s]\n", line.data());
 				if(!line.isEmpty())
 				{
 					headerLines += line;
