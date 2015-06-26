@@ -161,8 +161,7 @@ private:
 private slots:
 	void initTestCase()
 	{
-		//log_setOutputLevel(LOG_LEVEL_INFO);
-		log_setOutputLevel(LOG_LEVEL_DEBUG);
+		log_setOutputLevel(LOG_LEVEL_INFO);
 
 		server = new HttpServer(this);
 		server->listen();
