@@ -21,7 +21,7 @@ sock.connect('ipc:///tmp/zurl-req')
 # send request
 req = {
   'method': 'GET',
-  'uri': 'https://fanout.io/'
+  'uri': 'http://example.com/path'
 }
 sock.send('J' + json.dumps(req))
 
@@ -108,7 +108,7 @@ Requests may have a number of fields. Here are the main ones:
 * ``id`` - Unique ID among requests sent.
 * ``method`` - The HTTP method to use.
 * ``uri`` - The full URI to make the request to, e.g. scheme://domain.com/path?query
-* ``headers`` - The request headers, either as a dictionary or as a list of two-item lists.
+* ``headers`` - The request headers as a list of two-item lists.
 * ``body`` - The request body content.
 
 Only ``method`` and ``uri`` are required. Headers are not strictly required, not even ``Content-Length`` as Zurl will set that header for you. If ``body`` is unspecified, it is assumed to be empty. If you are using a REQ socket to speak with Zurl, then you can probably get away with having no ``id`` field. However, if you use DEALER for multiplexing, then you'll need to ID your requests in order to be able to match them to responses.
