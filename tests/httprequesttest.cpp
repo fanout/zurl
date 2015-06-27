@@ -64,7 +64,11 @@ public:
 
 	void handleRequest(const QByteArray &method, const QByteArray &uri)
 	{
-		Q_UNUSED(method);
+		if(method == "HEAD")
+		{
+			sock->write("HTTP/1.0 200 OK\r\nContent-Length: 12\r\n\r\n");
+			return;
+		}
 
 		if(uri == "/chunked")
 		{
@@ -73,18 +77,26 @@ public:
 			buf += QByteArray::number(body.size(), 16).toUpper() + "\r\n" + body + "\r\n";
 			buf += QByteArray::number(0, 16).toUpper() + "\r\n\r\n";
 			sock->write(buf);
-			sock->close();
 		}
 		else
 		{
 			sock->write("HTTP/1.0 200 OK\r\nContent-Length: 12\r\n\r\nhello world\n");
-			sock->close();
 		}
 	}
 
 private slots:
 	void server_newConnection()
 	{
+		if(sock)
+			sock->close();
+		else
+			takeNext();
+	}
+
+	void takeNext()
+	{
+		assert(!sock);
+
 		requestParsed = false;
 		headerLines.clear();
 		requestMethod.clear();
@@ -92,6 +104,7 @@ private slots:
 		requestHeaders.clear();
 
 		sock = server->nextPendingConnection();
+		assert(sock);
 		connect(sock, SIGNAL(readyRead()), SLOT(sock_readyRead()));
 		connect(sock, SIGNAL(disconnected()), SLOT(sock_disconnected()));
 	}
@@ -100,7 +113,7 @@ private slots:
 	{
 		if(!requestParsed)
 		{
-			while(sock->canReadLine())
+			while(!requestParsed && sock->canReadLine())
 			{
 				QByteArray line = sock->readLine();
 				assert(line[line.length() - 2] == '\r');
@@ -147,6 +160,8 @@ private slots:
 		sock->disconnect(this);
 		sock->deleteLater();
 		sock = 0;
+
+		takeNext();
 	}
 };
 
