@@ -1,6 +1,11 @@
 Zurl Changelog
 ==============
 
+v. 1.4.5 (2015-06-26)
+
+  * Fix regression with GET requests.
+  * Ensure responses with no content (HEAD, 204, 304) are handled properly.
+
 v. 1.4.4 (2015-06-26)
 
   * Fix HEAD requests.
