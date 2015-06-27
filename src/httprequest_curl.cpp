@@ -149,18 +149,26 @@ public:
 
 		if(method == "OPTIONS")
 		{
-			expectBody = false;
+			assert(!expectBody);
 			curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, "OPTIONS");
 		}
 		else if(method == "HEAD")
 		{
-			expectBody = false;
-			curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, "HEAD");
+			assert(!expectBody);
+			curl_easy_setopt(easy, CURLOPT_NOBODY, 1);
+			curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, NULL);
 		}
 		else if(method == "GET")
 		{
-			curl_easy_setopt(easy, CURLOPT_HTTPGET, 1);
-			curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, NULL);
+			if(!expectBody)
+			{
+				curl_easy_setopt(easy, CURLOPT_HTTPGET, 1);
+				curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, NULL);
+			}
+			else
+			{
+				curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, "GET");
+			}
 		}
 		else if(method == "POST")
 		{
@@ -760,6 +768,7 @@ public:
 	QUrl uri;
 	HttpHeaders headers;
 	bool willWriteBody;
+	bool bodyNotAllowed;
 	QString host;
 	QList<QHostAddress> addrs;
 	HttpRequest::ErrorCondition mostSignificantError;
@@ -775,6 +784,7 @@ public:
 		maxRedirects(-1),
 		errorCondition(HttpRequest::ErrorNone),
 		willWriteBody(false),
+		bodyNotAllowed(false),
 		mostSignificantError(HttpRequest::ErrorGeneric),
 		ignoreBody(false),
 		conn(0),
@@ -832,29 +842,25 @@ public:
 			return;
 		}
 
-		conn = new CurlConnection;
-		connect(conn, SIGNAL(updated()), SLOT(conn_updated()));
-
 		method = _method;
 		uri = _uri;
 		headers = _headers;
 		willWriteBody = _willWriteBody;
 
-		// eat any transport headers as they'd likely break things
-		headers.removeAll("Connection");
-		headers.removeAll("Keep-Alive");
-		headers.removeAll("Accept-Encoding");
-		headers.removeAll("Content-Encoding");
-		headers.removeAll("Transfer-Encoding");
-		headers.removeAll("Expect");
-
-		conn->setupMethod(method, willWriteBody);
+		// we'd prefer not to send chunked encoding header if we don't
+		//   have to for certain methods, so wait and see if the user
+		//   actually tries to send a body before we start the request
+		if(willWriteBody && (method == "GET" || method == "DELETE"))
+			return;
 
 		// if the user might provide a body but we don't expect one
 		//   for the method type, then we'll wait and see what is
 		//   provided before starting the request.
-		if(willWriteBody && !conn->expectBody)
+		if(willWriteBody && (method == "OPTIONS" || method == "HEAD"))
+		{
+			bodyNotAllowed = true;
 			return;
+		}
 
 		startConnect();
 	}
@@ -866,25 +872,27 @@ public:
 		if(body.isEmpty() || ignoreBody)
 			return;
 
-		assert(conn);
-
-		if(conn->expectBody)
-		{
-			conn->out += body;
-
-			if(conn->pauseBits & CURLPAUSE_SEND)
-			{
-				log_debug("send unpausing");
-				conn->pauseBits &= ~CURLPAUSE_SEND;
-				curl_easy_pause(conn->easy, conn->pauseBits);
-				g_man->update();
-			}
-		}
-		else
+		if(bodyNotAllowed)
 		{
 			ignoreBody = true;
 			errorCondition = HttpRequest::ErrorBodyNotAllowed;
 			QMetaObject::invokeMethod(q, "error", Qt::QueuedConnection);
+			return;
+		}
+
+		if(!conn)
+			startConnect();
+
+		assert(conn);
+
+		conn->out += body;
+
+		if(conn->pauseBits & CURLPAUSE_SEND)
+		{
+			log_debug("send unpausing");
+			conn->pauseBits &= ~CURLPAUSE_SEND;
+			curl_easy_pause(conn->easy, conn->pauseBits);
+			g_man->update();
 		}
 	}
 
@@ -895,23 +903,25 @@ public:
 		if(ignoreBody)
 			return;
 
+		if(!conn)
+		{
+			// if the user called endBody without actually writing
+			//   a body then we can set this flag off
+			willWriteBody = false;
+
+			startConnect();
+		}
+
 		assert(conn);
 
-		if(conn->expectBody)
-		{
-			conn->outFinished = true;
+		conn->outFinished = true;
 
-			if(conn->pauseBits & CURLPAUSE_SEND)
-			{
-				log_debug("send unpausing");
-				conn->pauseBits &= ~CURLPAUSE_SEND;
-				curl_easy_pause(conn->easy, conn->pauseBits);
-				g_man->update();
-			}
-		}
-		else
+		if(conn->pauseBits & CURLPAUSE_SEND)
 		{
-			startConnect();
+			log_debug("send unpausing");
+			conn->pauseBits &= ~CURLPAUSE_SEND;
+			curl_easy_pause(conn->easy, conn->pauseBits);
+			g_man->update();
 		}
 	}
 
@@ -939,6 +949,21 @@ public:
 
 	void startConnect()
 	{
+		assert(!conn);
+
+		conn = new CurlConnection;
+		connect(conn, SIGNAL(updated()), SLOT(conn_updated()));
+
+		// eat any transport headers as they'd likely break things
+		headers.removeAll("Connection");
+		headers.removeAll("Keep-Alive");
+		headers.removeAll("Accept-Encoding");
+		headers.removeAll("Content-Encoding");
+		headers.removeAll("Transfer-Encoding");
+		headers.removeAll("Expect");
+
+		conn->setupMethod(method, willWriteBody);
+
 		if(!connectHost.isEmpty())
 			host = connectHost;
 		else
