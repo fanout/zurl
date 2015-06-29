@@ -387,6 +387,9 @@ public:
 
 		if(transport == HttpTransport)
 		{
+			if(!request.body.isEmpty() && !request.more && !headers.contains("Content-Length"))
+				headers += HttpHeader("Content-Length", QByteArray::number(request.body.size()));
+
 			bool hasOrMightHaveBody = (!request.body.isEmpty() || request.more);
 
 			hreq->start(request.method, request.uri, headers, hasOrMightHaveBody);
