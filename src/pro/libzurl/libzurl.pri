@@ -30,8 +30,12 @@ SOURCES += \
 INCLUDEPATH += $$SRC_DIR
 
 HEADERS += \
+	$$SRC_DIR/addressresolver.h \
 	$$SRC_DIR/httprequest.h \
 	$$SRC_DIR/websocket.h
+
+SOURCES += \
+	$$SRC_DIR/addressresolver.cpp
 
 use_curl {
 	DEFINES += USE_CURL

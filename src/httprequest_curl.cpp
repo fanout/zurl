@@ -19,12 +19,15 @@
 
 #include <assert.h>
 #include <sys/select.h>
+#include <QCoreApplication>
+#include <QSocketNotifier>
+#include <QTimer>
 #include <QPointer>
 #include <QUrl>
 #include <curl/curl.h>
-#include "qjdnsshared.h"
 #include "bufferlist.h"
 #include "log.h"
+#include "addressresolver.h"
 
 #define BUFFER_SIZE 200000
 #define REQUEST_BODY_BUFFER_MAX 1000000
@@ -760,6 +763,7 @@ class HttpRequest::Private : public QObject
 public:
 	HttpRequest *q;
 	QJDnsShared *dns;
+	AddressResolver *resolver;
 	QString connectHost;
 	bool ignoreTlsErrors;
 	int maxRedirects;
@@ -792,6 +796,10 @@ public:
 	{
 		if(!g_man)
 			g_man = new CurlConnectionManager(QCoreApplication::instance());
+
+		resolver = new AddressResolver(dns, this);
+		connect(resolver, SIGNAL(resultsReady(const QList<QHostAddress> &)), SLOT(resolver_resultsReady(const QList<QHostAddress> &)));
+		connect(resolver, SIGNAL(error()), SLOT(resolver_error()));
 	}
 
 	~Private()
@@ -969,18 +977,7 @@ public:
 		else
 			host = uri.host();
 
-		QHostAddress addr(host);
-		if(!addr.isNull())
-		{
-			addrs += addr;
-			QMetaObject::invokeMethod(this, "tryNextAddress", Qt::QueuedConnection);
-		}
-		else
-		{
-			QJDnsSharedRequest *dreq = new QJDnsSharedRequest(dns);
-			connect(dreq, SIGNAL(resultsReady()), SLOT(dreq_resultsReady()));
-			dreq->query(QUrl::toAce(host), QJDns::A);
-		}
+		resolver->start(host);
 	}
 
 	// the idea with the priorities here is that an error is considered
@@ -1037,28 +1034,16 @@ private slots:
 		g_man->doSocketAction(false, CURL_SOCKET_TIMEOUT, 0);
 	}
 
-	void dreq_resultsReady()
+	void resolver_resultsReady(const QList<QHostAddress> &results)
 	{
-		QJDnsSharedRequest *dreq = (QJDnsSharedRequest *)sender();
+		addrs += results;
+		tryNextAddress();
+	}
 
-		if(dreq->success())
-		{
-			QList<QJDns::Record> results = dreq->results();
-			foreach(const QJDns::Record &r, results)
-			{
-				if(r.type == QJDns::A)
-					addrs += r.address;
-			}
-
-			delete dreq;
-			tryNextAddress();
-		}
-		else
-		{
-			delete dreq;
-			errorCondition = HttpRequest::ErrorConnect;
-			emit q->error();
-		}
+	void resolver_error()
+	{
+		errorCondition = HttpRequest::ErrorConnect;
+		emit q->error();
 	}
 
 	void conn_updated()
