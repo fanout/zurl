@@ -17,6 +17,7 @@
 
 #include "addressresolver.h"
 
+#include <assert.h>
 #include "qjdnsshared.h"
 #include "log.h"
 
@@ -27,31 +28,60 @@ class AddressResolver::Private : public QObject
 public:
 	AddressResolver *q;
 	QJDnsShared *dns;
+	QList<QByteArray> searchDomains;
+	QString host;
+	bool tryAbsolute;
 	QList<QHostAddress> results;
 
 	Private(AddressResolver *_q, QJDnsShared *_dns) :
 		QObject(_q),
 		q(_q),
-		dns(_dns)
+		dns(_dns),
+		tryAbsolute(false)
 	{
-		QList<QByteArray> domains = QJDnsShared::domains();
-		log_debug("domains:");
-		foreach(const QByteArray &domain, domains)
-			log_debug("  [%s]", domain.data());
+		searchDomains = QJDnsShared::domains();
 	}
 
 	void start(const QString &hostName)
 	{
-		QHostAddress addr(hostName);
+		host = hostName;
+
+		QHostAddress addr(host);
 		if(!addr.isNull())
 		{
 			results += addr;
 			QMetaObject::invokeMethod(this, "doFinish", Qt::QueuedConnection);
+			return;
 		}
+
+		if(searchDomains.isEmpty() || host.contains("."))
+			tryAbsolute = true;
+
+		nextQuery();
+	}
+
+private:
+	void nextQuery()
+	{
+		QString h;
+
+		if(tryAbsolute)
+		{
+			tryAbsolute = false;
+			h = host;
+		}
+		else
+		{
+			assert(!searchDomains.isEmpty());
+			h = host + "." + QString::fromUtf8(searchDomains.takeFirst());
+		}
+
+		QByteArray rawHost = QUrl::toAce(h);
+		log_debug("resolving: [%s]", rawHost.data());
 
 		QJDnsSharedRequest *dreq = new QJDnsSharedRequest(dns, this);
 		connect(dreq, SIGNAL(resultsReady()), SLOT(dreq_resultsReady()));
-		dreq->query(QUrl::toAce(hostName), QJDns::A);
+		dreq->query(rawHost, QJDns::A);
 	}
 
 private slots:
@@ -73,6 +103,13 @@ private slots:
 		else
 		{
 			delete dreq;
+
+			if(tryAbsolute || !searchDomains.isEmpty())
+			{
+				nextQuery();
+				return;
+			}
+
 			emit q->error();
 		}
 	}
