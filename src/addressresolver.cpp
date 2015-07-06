@@ -30,14 +30,16 @@ public:
 	QJDnsShared *dns;
 	QList<QByteArray> searchDomains;
 	QString host;
-	bool tryAbsolute;
+	bool absoluteFirst;
+	bool didAbsolute;
 	QList<QHostAddress> results;
 
 	Private(AddressResolver *_q, QJDnsShared *_dns) :
 		QObject(_q),
 		q(_q),
 		dns(_dns),
-		tryAbsolute(false)
+		absoluteFirst(false),
+		didAbsolute(false)
 	{
 		searchDomains = QJDnsShared::domains();
 	}
@@ -54,8 +56,8 @@ public:
 			return;
 		}
 
-		if(searchDomains.isEmpty() || host.contains("."))
-			tryAbsolute = true;
+		if(host.contains("."))
+			absoluteFirst = true;
 
 		nextQuery();
 	}
@@ -65,9 +67,9 @@ private:
 	{
 		QString h;
 
-		if(tryAbsolute)
+		if(!didAbsolute && (absoluteFirst || searchDomains.isEmpty()))
 		{
-			tryAbsolute = false;
+			didAbsolute = true;
 			h = host;
 		}
 		else
@@ -104,7 +106,7 @@ private slots:
 		{
 			delete dreq;
 
-			if(tryAbsolute || !searchDomains.isEmpty())
+			if(!didAbsolute || !searchDomains.isEmpty())
 			{
 				nextQuery();
 				return;
