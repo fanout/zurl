@@ -1,6 +1,10 @@
 Zurl Changelog
 ==============
 
+v. 1.4.6 (2015-07-05)
+
+  * DNS queries now respect search domains in resolv.conf
+
 v. 1.4.5 (2015-06-26)
 
   * Fix regression with GET requests.
