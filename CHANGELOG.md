@@ -1,6 +1,10 @@
 Zurl Changelog
 ==============
 
+v. 1.4.7 (2015-07-05)
+
+  * DNS: always do absolute query, even if not first
+
 v. 1.4.6 (2015-07-05)
 
   * DNS queries now respect search domains in resolv.conf
