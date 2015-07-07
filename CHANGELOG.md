@@ -1,13 +1,17 @@
 Zurl Changelog
 ==============
 
+v. 1.4.8 (2015-07-07)
+
+  * Be explicit about types passed to curl_easy_setopt (fixes 32-bit systems).
+
 v. 1.4.7 (2015-07-05)
 
-  * DNS: always do absolute query, even if not first
+  * DNS: always do absolute query, even if not first.
 
 v. 1.4.6 (2015-07-05)
 
-  * DNS queries now respect search domains in resolv.conf
+  * DNS queries now respect search domains in resolv.conf.
 
 v. 1.4.5 (2015-06-26)
 
