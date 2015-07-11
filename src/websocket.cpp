@@ -755,25 +755,33 @@ public:
 			if(!inbuf.isEmpty())
 			{
 				int avail = REJECT_BODY_MAX - responseBody.size();
+
+				// don't read more than Content-Length
+				if(responseContentLength != -1)
+					avail = qMin(avail, responseContentLength - responseBody.size());
+
 				int size = qMin(inbuf.size(), avail);
 				responseBody += inbuf.mid(0, size);
 				inbuf = inbuf.mid(size);
 
 				assert(responseBody.size() <= REJECT_BODY_MAX);
-
-				if(responseContentLength != -1)
-				{
-					assert(responseBody.size() <= responseContentLength);
-
-					if(responseBody.size() == responseContentLength || responseBody.size() == REJECT_BODY_MAX)
-						eof = true;
-				}
-				else
-				{
-					if(responseBody.size() == REJECT_BODY_MAX)
-						eof = true;
-				}
 			}
+
+			if(responseContentLength != -1)
+			{
+				assert(responseBody.size() <= responseContentLength);
+
+				if(responseBody.size() == responseContentLength || responseBody.size() == REJECT_BODY_MAX)
+					eof = true;
+			}
+			else
+			{
+				if(responseBody.size() == REJECT_BODY_MAX)
+					eof = true;
+			}
+
+			// if there are any bytes left we must be at the end
+			assert(inbuf.isEmpty() || eof);
 		}
 
 		if(eof)
