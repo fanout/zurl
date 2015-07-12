@@ -19,10 +19,11 @@
 
 #include <assert.h>
 #include <QUrl>
+#include <QPointer>
 #include <QSslSocket>
-#include "qjdnsshared.h"
 #include "log.h"
 #include "bufferlist.h"
+#include "addressresolver.h"
 
 #define REJECT_BODY_MAX 100000
 #define MAGIC_STRING "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -315,6 +316,7 @@ public:
 
 	WebSocket *q;
 	QJDnsShared *dns;
+	AddressResolver *resolver;
 	State state;
 	QString connectHost;
 	bool ignoreTlsErrors;
@@ -363,6 +365,9 @@ public:
 		inBytes(0),
 		pendingRead(false)
 	{
+		resolver = new AddressResolver(dns, this);
+		connect(resolver, SIGNAL(resultsReady(const QList<QHostAddress> &)), SLOT(resolver_resultsReady(const QList<QHostAddress> &)));
+		connect(resolver, SIGNAL(error()), SLOT(resolver_error()));
 	}
 
 	~Private()
@@ -392,21 +397,7 @@ public:
 			host = uri.host();
 
 		state = Connecting;
-
-		QHostAddress addr(host);
-		if(!addr.isNull())
-		{
-			addrs += addr;
-			QMetaObject::invokeMethod(this, "tryNextAddress", Qt::QueuedConnection);
-		}
-		else
-		{
-			log_debug("ws: resolving %s", qPrintable(host));
-
-			QJDnsSharedRequest *dreq = new QJDnsSharedRequest(dns);
-			connect(dreq, SIGNAL(resultsReady()), SLOT(dreq_resultsReady()));
-			dreq->query(QUrl::toAce(host), QJDns::A);
-		}
+		resolver->start(host);
 	}
 
 	void writeFrame(const Frame &frame)
@@ -839,29 +830,17 @@ private slots:
 			sock->connectToHost(host, port);
 	}
 
-	void dreq_resultsReady()
+	void resolver_resultsReady(const QList<QHostAddress> &results)
 	{
-		QJDnsSharedRequest *dreq = (QJDnsSharedRequest *)sender();
+		addrs += results;
+		tryNextAddress();
+	}
 
-		if(dreq->success())
-		{
-			QList<QJDns::Record> results = dreq->results();
-			foreach(const QJDns::Record &r, results)
-			{
-				if(r.type == QJDns::A)
-					addrs += r.address;
-			}
-
-			delete dreq;
-			tryNextAddress();
-		}
-		else
-		{
-			delete dreq;
-			state = Idle;
-			errorCondition = ErrorConnect;
-			emit q->error();
-		}
+	void resolver_error()
+	{
+		state = Idle;
+		errorCondition = ErrorConnect;
+		emit q->error();
 	}
 
 	void tryRead()
