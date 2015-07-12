@@ -71,6 +71,11 @@ public:
 			sock->write("HTTP/1.1 400 OK\r\nContent-Length: 19\r\n\r\nFailed negotiation\n");
 			sock->disconnectFromHost();
 		}
+		else if(uri == "/fail-nocontent")
+		{
+			sock->write("HTTP/1.1 400 OK\r\nContent-Length: 0\r\n\r\n");
+			sock->disconnectFromHost();
+		}
 		else if(uri == "/fail-chunked")
 		{
 			QByteArray body = "Failed negotiation\n";
@@ -208,6 +213,18 @@ private slots:
 		QCOMPARE(sock.errorCondition(), WebSocket::ErrorRejected);
 		QCOMPARE(sock.responseCode(), 400);
 		QCOMPARE(sock.readResponseBody(), QByteArray("Failed negotiation\n"));
+	}
+
+	void handshakeFailNoContent()
+	{
+		WebSocket sock(dns);
+		QSignalSpy spy(&sock, SIGNAL(error()));
+		sock.start(QString("http://localhost:%1/fail-nocontent").arg(server->localPort()), HttpHeaders());
+		waitForSignal(&spy);
+
+		QCOMPARE(sock.errorCondition(), WebSocket::ErrorRejected);
+		QCOMPARE(sock.responseCode(), 400);
+		QVERIFY(sock.readResponseBody().isEmpty());
 	}
 
 	void handshakeFailChunked()
