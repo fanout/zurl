@@ -1,6 +1,11 @@
 Zurl Changelog
 ==============
 
+v. 1.4.9 (2015-07-16)
+
+  * WebSocket: DNS queries now respect search domains in resolv.conf.
+  * WebSocket: fix for error responses with no Content-Length.
+
 v. 1.4.8 (2015-07-07)
 
   * Be explicit about types passed to curl_easy_setopt (fixes 32-bit systems).
