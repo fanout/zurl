@@ -354,14 +354,23 @@ public:
 	size_t readFunction(char *p, size_t size)
 	{
 		QByteArray buf;
-		if(outPos >= 0 && out.size() <= REQUEST_BODY_BUFFER_MAX)
+
+		if(outPos >= 0 && out.size() > REQUEST_BODY_BUFFER_MAX)
+		{
+			// exceeded buffer max, switch to unbuffered
+			QByteArray remaining = out.mid(outPos);
+			out.clear();
+			out += remaining;
+			outPos = -1;
+		}
+
+		if(outPos >= 0)
 		{
 			buf = out.mid(outPos, size);
 			outPos += buf.size();
 		}
 		else
 		{
-			outPos = -1; // no longer buffered
 			buf = out.take(size);
 		}
 
