@@ -1,6 +1,10 @@
 Zurl Changelog
 ==============
 
+v. 1.4.10 (2015-09-24)
+
+  * Fix buffer corruption on large uploads.
+
 v. 1.4.9 (2015-07-16)
 
   * WebSocket: DNS queries now respect search domains in resolv.conf.
