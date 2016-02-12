@@ -221,7 +221,7 @@ public:
 		if(!connectAddr.isNull())
 		{
 			curl_slist_free_all(dnsCache);
-			QByteArray cacheEntry = tmp.encodedHost() + ':' + QByteArray::number(tmp.port()) + ':' + connectAddr.toString().toUtf8();
+			QByteArray cacheEntry = tmp.host(QUrl::FullyEncoded).toUtf8() + ':' + QByteArray::number(tmp.port()) + ':' + connectAddr.toString().toUtf8();
 			dnsCache = curl_slist_append(dnsCache, cacheEntry.data());
 			curl_easy_setopt(easy, CURLOPT_RESOLVE, dnsCache);
 		}

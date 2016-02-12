@@ -173,12 +173,41 @@ private slots:
 	}
 };
 
+class DnsDebug : QObject
+{
+	Q_OBJECT
+
+private:
+	QJDnsSharedDebug *dnsDebug_;
+
+public:
+	DnsDebug(QObject *parent = 0) :
+		QObject(parent)
+	{
+		dnsDebug_ = new QJDnsSharedDebug(this);
+		connect(dnsDebug_, SIGNAL(readyRead()), SLOT(flush()));
+	}
+
+	void applyTo(QJDnsShared *dns)
+	{
+		dns->setDebug(dnsDebug_, "U");
+	}
+
+public slots:
+	void flush()
+	{
+		foreach(const QString &line, dnsDebug_->readDebugLines())
+			log_debug("%s", qPrintable(line));
+	}
+};
+
 class HttpRequestTest : public QObject
 {
 	Q_OBJECT
 
 private:
 	HttpServer *server;
+	DnsDebug *dnsDebug;
 	QJDnsShared *dns;
 
 	void waitForSignal(QSignalSpy *spy)
@@ -191,18 +220,26 @@ private slots:
 	void initTestCase()
 	{
 		log_setOutputLevel(LOG_LEVEL_INFO);
+		//log_setOutputLevel(LOG_LEVEL_DEBUG);
 
 		server = new HttpServer(this);
 		server->listen();
 
+		dnsDebug = new DnsDebug(this);
+
 		dns = new QJDnsShared(QJDnsShared::UnicastInternet, this);
+		dnsDebug->applyTo(dns);
+
 		dns->addInterface(QHostAddress::Any);
 		dns->addInterface(QHostAddress::AnyIPv6);
 	}
 
 	void cleanupTestCase()
 	{
-		delete dns;
+		// this will delete dns
+		QJDnsShared::waitForShutdown(QList<QJDnsShared*>() << dns);
+
+		delete dnsDebug;
 		delete server;
 	}
 

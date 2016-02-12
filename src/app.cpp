@@ -23,13 +23,14 @@
 #include <QUuid>
 #include <QSettings>
 #include <QHostAddress>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 
 #ifdef USE_QNAM
 #include <QtCrypto>
 #endif
 
-#include <qjson/serializer.h>
-#include <qjson/parser.h>
 #include "qjdnsshared.h"
 #include "qzmqsocket.h"
 #include "qzmqreqmessage.h"
@@ -182,6 +183,7 @@ public:
 
 	App *q;
 	QJDnsShared *dns;
+	QJDnsSharedDebug *dnsDebug;
 	QZmq::Socket *in_sock;
 	QZmq::Socket *in_stream_sock;
 	QZmq::Socket *out_sock;
@@ -209,6 +211,14 @@ public:
 
 	~Private()
 	{
+		// delete workers before dns
+		qDeleteAll(workers);
+
+		if(dns)
+		{
+			// this will delete dns
+			QJDnsShared::waitForShutdown(QList<QJDnsShared*>() << dns);
+		}
 	}
 
 	void start()
@@ -374,7 +384,14 @@ public:
 		cleanStringList(&config.allowExps);
 		cleanStringList(&config.denyExps);
 
+		dnsDebug = new QJDnsSharedDebug(this);
+		connect(dnsDebug, SIGNAL(readyRead()), SLOT(dnsDebug_readyRead()));
+
 		dns = new QJDnsShared(QJDnsShared::UnicastInternet, this);
+
+		// uncomment this for packet level dns debugging
+		//dns->setDebug(dnsDebug, "U");
+
 		dns->addInterface(QHostAddress::Any);
 		dns->addInterface(QHostAddress::AnyIPv6);
 
@@ -509,14 +526,18 @@ public:
 		}
 		else // JsonFormat
 		{
-			bool ok;
-			QJson::Parser parser;
-			data = parser.parse(message.mid(1), &ok);
-			if(!ok)
+			QJsonParseError e;
+			QJsonDocument doc = QJsonDocument::fromJson(message.mid(1), &e);
+			if(e.error != QJsonParseError::NoError)
 			{
 				log_warning("received message with invalid format (json parse failed), skipping");
 				return;
 			}
+
+			if(doc.isObject())
+				data = doc.object().toVariantMap();
+			else if(doc.isArray())
+				data = doc.array().toVariantList();
 
 			data = convertFromJsonStyle(data);
 		}
@@ -602,6 +623,13 @@ public:
 	}
 
 private slots:
+	void dnsDebug_readyRead()
+	{
+		QStringList lines = dnsDebug->readDebugLines();
+		foreach(const QString &line, lines)
+			log_debug("%s", qPrintable(line));
+	}
+
 	void in_readyRead(const QList<QByteArray> &message)
 	{
 		if(message.count() != 1)
@@ -656,8 +684,13 @@ private slots:
 		}
 		else // JsonFormat
 		{
-			QJson::Serializer serializer;
-			part = QByteArray("J") + serializer.serialize(convertToJsonStyle(response));
+			QVariant data = convertToJsonStyle(response);
+			QJsonDocument doc;
+			if(data.type() == QVariant::Map)
+				doc = QJsonDocument(QJsonObject::fromVariantMap(data.toMap()));
+			else if(data.type() == QVariant::List)
+				doc = QJsonDocument(QJsonArray::fromVariantList(data.toList()));
+			part = QByteArray("J") + doc.toJson();
 		}
 
 		if(!receiver.isEmpty())
