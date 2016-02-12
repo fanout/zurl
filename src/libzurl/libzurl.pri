@@ -1,4 +1,4 @@
-SRC_DIR = $$PWD/../..
+SRC_DIR = $$PWD/..
 COMMON_DIR = $$SRC_DIR/common
 
 include($$SRC_DIR/jdns/jdns.pri)

@@ -1,4 +1,4 @@
-SRC_DIR = $$PWD/../..
+SRC_DIR = $$PWD/..
 COMMON_DIR = $$SRC_DIR/common
 
 INCLUDEPATH += $$SRC_DIR
