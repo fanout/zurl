@@ -1,6 +1,11 @@
 Zurl Changelog
 ==============
 
+v. 1.5.0 (2016-02-12)
+
+  * Port to Qt 5.
+  * Drop libqjson dependency since Qt 5 has JSON support built-in.
+
 v. 1.4.10 (2015-09-24)
 
   * Fix buffer corruption on large uploads.
