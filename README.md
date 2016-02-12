@@ -55,10 +55,9 @@ Features
 Requirements
 ------------
 
-  * qt >= 4.7
+  * qt >= 5.2
   * libzmq >= 2.0
   * libcurl >= 7.20
-  * qjson
 
 Setup
 -----
