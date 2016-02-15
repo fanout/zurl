@@ -198,6 +198,8 @@ public:
 	Private(App *_q) :
 		QObject(_q),
 		q(_q),
+		dns(0),
+		dnsDebug(0),
 		in_sock(0),
 		in_stream_sock(0),
 		out_sock(0),
