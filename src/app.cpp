@@ -692,7 +692,7 @@ private slots:
 				doc = QJsonDocument(QJsonObject::fromVariantMap(data.toMap()));
 			else if(data.type() == QVariant::List)
 				doc = QJsonDocument(QJsonArray::fromVariantList(data.toList()));
-			part = QByteArray("J") + doc.toJson();
+			part = QByteArray("J") + doc.toJson(QJsonDocument::Compact);
 		}
 
 		if(!receiver.isEmpty())
