@@ -42,7 +42,7 @@
 #include "log.h"
 #include "worker.h"
 
-#define VERSION "1.5.0"
+#define VERSION "1.5.1"
 
 static void cleanStringList(QStringList *in)
 {

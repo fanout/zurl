@@ -1,6 +1,12 @@
 Zurl Changelog
 ==============
 
+v. 1.5.1 (2016-02-21)
+
+  * Don't install tests.
+  * Fix crash when using --version.
+  * Output compact JSON (to match 1.4 behavior).
+
 v. 1.5.0 (2016-02-12)
 
   * Port to Qt 5.
