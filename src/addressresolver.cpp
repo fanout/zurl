@@ -56,7 +56,7 @@ public:
 			return;
 		}
 
-		if(host.contains("."))
+		if(host.contains(".") || host == "localhost")
 			absoluteFirst = true;
 
 		nextQuery();
