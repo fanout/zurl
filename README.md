@@ -1,7 +1,7 @@
 Zurl
 ====
 Author: Justin Karneges <justin@fanout.io>  
-Mailing List: http://lists.fanout.io/listinfo.cgi/fanout-users-fanout.io
+Mailing List: http://lists.fanout.io/mailman/listinfo/fanout-users
 
 Description
 -----------
