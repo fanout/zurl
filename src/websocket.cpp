@@ -871,7 +871,6 @@ private slots:
 
 		requestKey = generateKey();
 
-		requestHeaders.removeAll("Host");
 		requestHeaders.removeAll("Upgrade");
 		requestHeaders.removeAll("Connection");
 		requestHeaders.removeAll("Sec-WebSocket-Version");
@@ -883,7 +882,14 @@ private slots:
 		//   care to not send connection-level extensions, as we won't
 		//   be able to understand them
 
-		requestHeaders += HttpHeader("Host", requestUri.host().toUtf8());
+		if(!requestHeaders.contains("Host"))
+		{
+			QByteArray hostHeader = requestUri.host().toUtf8();
+			if(requestUri.port() != -1)
+				hostHeader += ':' + QByteArray::number(requestUri.port());
+			requestHeaders += HttpHeader("Host", hostHeader);
+		}
+
 		requestHeaders += HttpHeader("Upgrade", "websocket");
 		requestHeaders += HttpHeader("Connection", "Upgrade");
 		requestHeaders += HttpHeader("Sec-WebSocket-Version", "13");
