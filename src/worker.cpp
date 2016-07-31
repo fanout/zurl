@@ -271,13 +271,15 @@ public:
 
 			QByteArray hostHeader = request.uri.host().toUtf8();
 
-			// only tack on the port if it isn't being overridden
 			int port = request.uri.port(defaultPort);
-			if(request.connectPort == -1 && port != defaultPort)
-				hostHeader += ":" + QByteArray::number(port);
+			if(port != defaultPort)
+				hostHeader += ':' + QByteArray::number(port);
 
-			headers.removeAll("Host");
-			headers += HttpHeader("Host", hostHeader);
+			if(headers.get("Host") != hostHeader)
+			{
+				headers.removeAll("Host");
+				headers += HttpHeader("Host", hostHeader);
+			}
 
 			hreq = new HttpRequest(dns, this);
 			connect(hreq, SIGNAL(nextAddress(const QHostAddress &)), SLOT(req_nextAddress(const QHostAddress &)));
@@ -331,13 +333,15 @@ public:
 
 			QByteArray hostHeader = request.uri.host().toUtf8();
 
-			// only tack on the port if it isn't being overridden
 			int port = request.uri.port(defaultPort);
-			if(request.connectPort == -1 && port != defaultPort)
+			if(port != defaultPort)
 				hostHeader += ":" + QByteArray::number(port);
 
-			headers.removeAll("Host");
-			headers += HttpHeader("Host", hostHeader);
+			if(headers.get("Host") != hostHeader)
+			{
+				headers.removeAll("Host");
+				headers += HttpHeader("Host", hostHeader);
+			}
 
 			ws = new WebSocket(dns, this);
 			connect(ws, SIGNAL(nextAddress(const QHostAddress &)), SLOT(req_nextAddress(const QHostAddress &)));
