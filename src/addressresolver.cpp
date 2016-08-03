@@ -93,14 +93,20 @@ private slots:
 
 		if(dreq->success())
 		{
+			QList<QHostAddress> tmp;
 			foreach(const QJDns::Record &r, dreq->results())
 			{
 				if(r.type == QJDns::A)
-					results += r.address;
+					tmp += r.address;
 			}
 
 			delete dreq;
-			emit q->resultsReady(results);
+
+			// randomize the results
+			while(!tmp.isEmpty())
+				results += tmp.takeAt(qrand() % tmp.count());
+
+			doFinish();
 		}
 		else
 		{
