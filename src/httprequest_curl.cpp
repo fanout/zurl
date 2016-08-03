@@ -201,32 +201,41 @@ public:
 			curl_easy_setopt(easy, CURLOPT_UPLOAD, 1L);
 	}
 
-	void setup(const QUrl &uri, const HttpHeaders &_headers, const QHostAddress &connectAddr = QHostAddress(), int connectPort = -1, int _maxRedirects = -1)
+	void setup(const QUrl &_uri, const HttpHeaders &_headers, const QHostAddress &connectAddr = QHostAddress(), int connectPort = -1, int _maxRedirects = -1, const QString &connectHostToTrust = QString())
 	{
 		assert(!method.isEmpty());
 
-		QUrl tmp = uri;
+		QUrl uri = _uri;
 		if(connectPort != -1)
-			tmp.setPort(connectPort);
-		else if(tmp.port() == -1)
+			uri.setPort(connectPort);
+		else if(uri.port() == -1)
 		{
 			if(uri.scheme() == "https")
-				tmp.setPort(443);
+				uri.setPort(443);
 			else
-				tmp.setPort(80);
+				uri.setPort(80);
 		}
 
-		curl_easy_setopt(easy, CURLOPT_URL, tmp.toEncoded().data());
+		HttpHeaders headers = _headers;
 
 		if(!connectAddr.isNull())
 		{
 			curl_slist_free_all(dnsCache);
-			QByteArray cacheEntry = tmp.host(QUrl::FullyEncoded).toUtf8() + ':' + QByteArray::number(tmp.port()) + ':' + connectAddr.toString().toUtf8();
+
+			if(!connectHostToTrust.isEmpty())
+			{
+				headers.removeAll("Host");
+				headers += HttpHeader("Host", uri.host(QUrl::FullyEncoded).toUtf8());
+
+				uri.setHost(connectHostToTrust);
+			}
+
+			QByteArray cacheEntry = uri.host(QUrl::FullyEncoded).toUtf8() + ':' + QByteArray::number(uri.port()) + ':' + connectAddr.toString().toUtf8();
 			dnsCache = curl_slist_append(dnsCache, cacheEntry.data());
 			curl_easy_setopt(easy, CURLOPT_RESOLVE, dnsCache);
 		}
 
-		HttpHeaders headers = _headers;
+		curl_easy_setopt(easy, CURLOPT_URL, uri.toEncoded().data());
 
 		bool chunked = false;
 		if(headers.contains("Content-Length"))
@@ -774,6 +783,7 @@ public:
 	QJDnsShared *dns;
 	AddressResolver *resolver;
 	QString connectHost;
+	bool trustConnectHost;
 	bool ignoreTlsErrors;
 	int maxRedirects;
 	HttpRequest::ErrorCondition errorCondition;
@@ -793,6 +803,7 @@ public:
 		QObject(_q),
 		q(_q),
 		dns(_dns),
+		trustConnectHost(false),
 		ignoreTlsErrors(false),
 		maxRedirects(-1),
 		errorCondition(HttpRequest::ErrorNone),
@@ -1028,7 +1039,7 @@ private slots:
 		if(!self)
 			return;
 
-		conn->setup(uri, headers, addr, -1, maxRedirects);
+		conn->setup(uri, headers, addr, -1, maxRedirects, trustConnectHost ? connectHost : QString());
 
 		if(ignoreTlsErrors)
 		{
@@ -1070,6 +1081,7 @@ private slots:
 					curError = HttpRequest::ErrorConnect;
 					break;
 				case CURLE_SSL_CACERT:
+				case CURLE_PEER_FAILED_VERIFICATION:
 					curError = HttpRequest::ErrorTls;
 					break;
 				case CURLE_OPERATION_TIMEDOUT:
@@ -1140,6 +1152,11 @@ HttpRequest::~HttpRequest()
 void HttpRequest::setConnectHost(const QString &host)
 {
 	d->connectHost = host;
+}
+
+void HttpRequest::setTrustConnectHost(bool on)
+{
+	d->trustConnectHost = on;
 }
 
 void HttpRequest::setIgnoreTlsErrors(bool on)

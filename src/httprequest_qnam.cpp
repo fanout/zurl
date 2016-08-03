@@ -455,6 +455,11 @@ void HttpRequest::setConnectHost(const QString &host)
 	d->connectHost = host;
 }
 
+void HttpRequest::setTrustConnectHost(bool on)
+{
+	Q_UNUSED(on);
+}
+
 void HttpRequest::setIgnoreTlsErrors(bool on)
 {
 	d->ignoreTlsErrors = on;

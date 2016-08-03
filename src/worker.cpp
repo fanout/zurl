@@ -295,6 +295,7 @@ public:
 			if(request.connectPort != -1)
 				request.uri.setPort(request.connectPort);
 
+			hreq->setTrustConnectHost(request.trustConnectHost);
 			hreq->setIgnoreTlsErrors(request.ignoreTlsErrors);
 			if(request.followRedirects)
 				hreq->setFollowRedirects(8);
