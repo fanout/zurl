@@ -39,7 +39,11 @@ SOURCES += \
 
 use_curl {
 	DEFINES += USE_CURL
-	SOURCES += $$SRC_DIR/httprequest_curl.cpp
+	HEADERS += \
+		$$SRC_DIR/verifyhost.h
+	SOURCES += \
+		$$SRC_DIR/httprequest_curl.cpp \
+		$$SRC_DIR/verifyhost.cpp
 } else {
 	DEFINES += USE_QNAM
 	SOURCES += $$SRC_DIR/httprequest_qnam.cpp

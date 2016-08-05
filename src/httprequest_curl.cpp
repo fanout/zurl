@@ -19,6 +19,7 @@
 
 #include <assert.h>
 #include <sys/select.h>
+#include <openssl/ssl.h>
 #include <QCoreApplication>
 #include <QSocketNotifier>
 #include <QTimer>
@@ -28,6 +29,7 @@
 #include "bufferlist.h"
 #include "log.h"
 #include "addressresolver.h"
+#include "verifyhost.h"
 
 #define BUFFER_SIZE 200000
 #define REQUEST_BODY_BUFFER_MAX 1000000
@@ -86,6 +88,7 @@ public:
 	int newlyWritten;
 	bool pendingUpdate;
 	CURLcode result;
+	QStringList checkHosts;
 
 	CurlConnection() :
 		maxRedirects(-1),
@@ -123,6 +126,10 @@ public:
 		curl_easy_setopt(easy, CURLOPT_SEEKDATA, this);
 		curl_easy_setopt(easy, CURLOPT_HEADERFUNCTION, headerFunction_cb);
 		curl_easy_setopt(easy, CURLOPT_HEADERDATA, this);
+
+		curl_easy_setopt(easy, CURLOPT_SSL_VERIFYHOST, 0L);
+		curl_easy_setopt(easy, CURLOPT_SSL_CTX_FUNCTION, &sslCtxFunction_cb);
+		curl_easy_setopt(easy, CURLOPT_SSL_CTX_DATA, this);
 
 		curl_easy_setopt(easy, CURLOPT_BUFFERSIZE, (long)BUFFER_SIZE);
 		curl_easy_setopt(easy, CURLOPT_ACCEPT_ENCODING, "");
@@ -218,17 +225,14 @@ public:
 
 		HttpHeaders headers = _headers;
 
+		checkHosts += uri.host(QUrl::FullyEncoded);
+
 		if(!connectAddr.isNull())
 		{
 			curl_slist_free_all(dnsCache);
 
 			if(!connectHostToTrust.isEmpty())
-			{
-				headers.removeAll("Host");
-				headers += HttpHeader("Host", uri.host(QUrl::FullyEncoded).toUtf8());
-
-				uri.setHost(connectHostToTrust);
-			}
+				checkHosts += connectHostToTrust;
 
 			QByteArray cacheEntry = uri.host(QUrl::FullyEncoded).toUtf8() + ':' + QByteArray::number(uri.port()) + ':' + connectAddr.toString().toUtf8();
 			dnsCache = curl_slist_append(dnsCache, cacheEntry.data());
@@ -320,6 +324,18 @@ public:
 	{
 		CurlConnection *self = (CurlConnection *)userdata;
 		return self->headerFunction((char *)ptr, size * nmemb);
+	}
+
+	static CURLcode sslCtxFunction_cb(CURL *easy, SSL_CTX *context, void *userdata)
+	{
+		CurlConnection *self = (CurlConnection *)userdata;
+		return self->sslCtxFunction(easy, context);
+	}
+
+	static int sslVerifyCallback_cb(X509_STORE_CTX *x509StoreContext, void *data)
+	{
+		CurlConnection *self = (CurlConnection *)data;
+		return self->sslVerifyCallback(x509StoreContext);
 	}
 
 	size_t debugFunction(CURL *easy, curl_infotype type, char *ptr, size_t size)
@@ -528,6 +544,29 @@ public:
 		}
 
 		return size;
+	}
+
+	CURLcode sslCtxFunction(CURL *_easy, SSL_CTX *context)
+	{
+		Q_UNUSED(_easy);
+
+		SSL_CTX_set_cert_verify_callback(context, sslVerifyCallback_cb, this);
+		return CURLE_OK;
+	}
+
+	int sslVerifyCallback(X509_STORE_CTX *x509StoreContext)
+	{
+		X509 *peerCert = x509StoreContext->cert;
+
+		foreach(const QString &host, checkHosts)
+		{
+			if(verifyhost(host.toUtf8().data(), peerCert) == CURLE_OK)
+				return 1;
+		}
+
+		// TODO: later on, consider changing this to X509_V_ERR_HOSTNAME_MISMATCH
+		X509_STORE_CTX_set_error(x509StoreContext, X509_V_ERR_SUBJECT_ISSUER_MISMATCH);
+		return 0;
 	}
 
 	void done(CURLcode _result)
@@ -1043,8 +1082,8 @@ private slots:
 
 		if(ignoreTlsErrors)
 		{
+			// this will verify the host as well through sslVerifyCallback
 			curl_easy_setopt(conn->easy, CURLOPT_SSL_VERIFYPEER, 0L);
-			curl_easy_setopt(conn->easy, CURLOPT_SSL_VERIFYHOST, 0L);
 		}
 
 		handleAdded = true;
