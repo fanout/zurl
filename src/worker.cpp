@@ -177,6 +177,7 @@ public:
 		bytesReceived = 0;
 
 		ignorePolicies = request.ignorePolicies;
+		sessionTimeout = -1;
 
 		if(request.uri.isEmpty())
 		{
