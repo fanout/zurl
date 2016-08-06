@@ -359,6 +359,8 @@ public:
 				request.uri.setPort(request.connectPort);
 
 			ws->setIgnoreTlsErrors(request.ignoreTlsErrors);
+			if(request.followRedirects)
+				ws->setFollowRedirects(8);
 			ws->setMaxFrameSize(config->sessionBufferSize);
 
 			if(request.credits != -1)
