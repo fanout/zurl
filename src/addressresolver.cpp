@@ -41,11 +41,12 @@ public:
 		absoluteFirst(false),
 		didAbsolute(false)
 	{
-		searchDomains = QJDnsShared::domains();
 	}
 
 	void start(const QString &hostName)
 	{
+		results.clear();
+
 		host = hostName;
 
 		QHostAddress addr(host);
@@ -56,8 +57,10 @@ public:
 			return;
 		}
 
-		if(host.contains(".") || host == "localhost")
-			absoluteFirst = true;
+		absoluteFirst = (host.contains(".") || host == "localhost");
+		didAbsolute = false;
+
+		searchDomains = QJDnsShared::domains();
 
 		nextQuery();
 	}
