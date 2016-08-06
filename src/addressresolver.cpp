@@ -85,7 +85,7 @@ private:
 		log_debug("resolving: [%s]", rawHost.data());
 
 		QJDnsSharedRequest *dreq = new QJDnsSharedRequest(dns, this);
-		connect(dreq, SIGNAL(resultsReady()), SLOT(dreq_resultsReady()));
+		connect(dreq, &QJDnsSharedRequest::resultsReady, this, &Private::dreq_resultsReady);
 		dreq->query(rawHost, QJDns::A);
 	}
 

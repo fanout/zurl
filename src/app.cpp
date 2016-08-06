@@ -207,8 +207,8 @@ public:
 		in_valve(0),
 		in_req_valve(0)
 	{
-		connect(ProcessQuit::instance(), SIGNAL(quit()), SLOT(doQuit()));
-		connect(ProcessQuit::instance(), SIGNAL(hup()), SLOT(reload()));
+		connect(ProcessQuit::instance(), &ProcessQuit::quit, this, &Private::doQuit);
+		connect(ProcessQuit::instance(), &ProcessQuit::hup, this, &Private::reload);
 	}
 
 	~Private()
@@ -387,7 +387,7 @@ public:
 		cleanStringList(&config.denyExps);
 
 		dnsDebug = new QJDnsSharedDebug(this);
-		connect(dnsDebug, SIGNAL(readyRead()), SLOT(dnsDebug_readyRead()));
+		connect(dnsDebug, &QJDnsSharedDebug::readyRead, this, &Private::dnsDebug_readyRead);
 
 		dns = new QJDnsShared(QJDnsShared::UnicastInternet, this);
 
@@ -407,7 +407,7 @@ public:
 				return;
 
 			in_valve = new QZmq::Valve(in_sock, this);
-			connect(in_valve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(in_readyRead(const QList<QByteArray> &)));
+			connect(in_valve, &QZmq::Valve::readyRead, this, &Private::in_readyRead);
 		}
 
 		if(!in_stream_spec.isEmpty())
@@ -417,7 +417,7 @@ public:
 			in_stream_sock->setIdentity(config.clientId);
 			in_stream_sock->setHwm(inHwm);
 
-			connect(in_stream_sock, SIGNAL(readyRead()), SLOT(in_stream_readyRead()));
+			connect(in_stream_sock, &QZmq::Socket::readyRead, this, &Private::in_stream_readyRead);
 
 			if(!bindSpec(in_stream_sock, "in_stream_spec", in_stream_spec, ipcFileMode))
 				return;
@@ -445,7 +445,7 @@ public:
 				return;
 
 			in_req_valve = new QZmq::Valve(in_req_sock, this);
-			connect(in_req_valve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(in_req_readyRead(const QList<QByteArray> &)));
+			connect(in_req_valve, &QZmq::Valve::readyRead, this, &Private::in_req_readyRead);
 		}
 
 		if(in_valve)
@@ -591,8 +591,8 @@ public:
 		}
 
 		Worker *w = new Worker(dns, &config, format, this);
-		connect(w, SIGNAL(readyRead(const QByteArray &, const QVariant &)), SLOT(worker_readyRead(const QByteArray &, const QVariant &)));
-		connect(w, SIGNAL(finished()), SLOT(worker_finished()));
+		connect(w, &Worker::readyRead, this, &Private::worker_readyRead);
+		connect(w, &Worker::finished, this, &Private::worker_finished);
 
 		workers += w;
 

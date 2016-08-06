@@ -625,7 +625,7 @@ public:
 		pendingUpdate(false)
 	{
 		timer = new QTimer(this);
-		connect(timer, SIGNAL(timeout()), SLOT(timer_timeout()));
+		connect(timer, &QTimer::timeout, this, &CurlConnectionManager::timer_timeout);
 		timer->setSingleShot(true);
 
 		curl_global_init(CURL_GLOBAL_ALL);
@@ -692,12 +692,12 @@ public:
 
 			si->snRead = new QSocketNotifier(s, QSocketNotifier::Read, this);
 			si->snRead->setEnabled(false);
-			connect(si->snRead, SIGNAL(activated(int)), SLOT(snRead_activated(int)));
+			connect(si->snRead, &QSocketNotifier::activated, this, &CurlConnectionManager::snRead_activated);
 			snMap.insert(si->snRead, si);
 
 			si->snWrite = new QSocketNotifier(s, QSocketNotifier::Write, this);
 			si->snWrite->setEnabled(false);
-			connect(si->snWrite, SIGNAL(activated(int)), SLOT(snWrite_activated(int)));
+			connect(si->snWrite, &QSocketNotifier::activated, this, &CurlConnectionManager::snWrite_activated);
 			snMap.insert(si->snWrite, si);
 
 			curl_multi_assign(multi, s, si);
@@ -857,8 +857,8 @@ public:
 			g_man = new CurlConnectionManager(QCoreApplication::instance());
 
 		resolver = new AddressResolver(dns, this);
-		connect(resolver, SIGNAL(resultsReady(const QList<QHostAddress> &)), SLOT(resolver_resultsReady(const QList<QHostAddress> &)));
-		connect(resolver, SIGNAL(error()), SLOT(resolver_error()));
+		connect(resolver, &AddressResolver::resultsReady, this, &Private::resolver_resultsReady);
+		connect(resolver, &AddressResolver::error, this, &Private::resolver_error);
 	}
 
 	~Private()
@@ -891,7 +891,7 @@ public:
 			cleanup();
 
 			conn = new CurlConnection;
-			connect(conn, SIGNAL(updated()), SLOT(conn_updated()));
+			connect(conn, &CurlConnection::updated, this, &Private::conn_updated);
 
 			conn->setupMethod(method, willWriteBody);
 			conn->out = out;
@@ -1019,7 +1019,7 @@ public:
 		assert(!conn);
 
 		conn = new CurlConnection;
-		connect(conn, SIGNAL(updated()), SLOT(conn_updated()));
+		connect(conn, &CurlConnection::updated, this, &Private::conn_updated);
 
 		// eat any transport headers as they'd likely break things
 		headers.removeAll("Connection");

@@ -43,7 +43,7 @@ public:
 	bool listen()
 	{
 		server = new QTcpServer(this);
-		connect(server, SIGNAL(newConnection()), SLOT(server_newConnection()));
+		connect(server, &QTcpServer::newConnection, this, &WebSocketServer::server_newConnection);
 		if(server->listen(QHostAddress::Any, 0))
 			return true;
 
@@ -98,8 +98,8 @@ private slots:
 	void server_newConnection()
 	{
 		sock = server->nextPendingConnection();
-		connect(sock, SIGNAL(readyRead()), SLOT(sock_readyRead()));
-		connect(sock, SIGNAL(disconnected()), SLOT(sock_disconnected()));
+		connect(sock, &QTcpSocket::readyRead, this, &WebSocketServer::sock_readyRead);
+		connect(sock, &QTcpSocket::disconnected, this, &WebSocketServer::sock_disconnected);
 	}
 
 	void sock_readyRead()

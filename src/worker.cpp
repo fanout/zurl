@@ -283,10 +283,10 @@ public:
 			}
 
 			hreq = new HttpRequest(dns, this);
-			connect(hreq, SIGNAL(nextAddress(const QHostAddress &)), SLOT(req_nextAddress(const QHostAddress &)));
-			connect(hreq, SIGNAL(readyRead()), SLOT(req_readyRead()));
-			connect(hreq, SIGNAL(bytesWritten(int)), SLOT(req_bytesWritten(int)));
-			connect(hreq, SIGNAL(error()), SLOT(req_error()));
+			connect(hreq, &HttpRequest::nextAddress, this, &Private::req_nextAddress);
+			connect(hreq, &HttpRequest::readyRead, this, &Private::req_readyRead);
+			connect(hreq, &HttpRequest::bytesWritten, this, &Private::req_bytesWritten);
+			connect(hreq, &HttpRequest::error, this, &Private::req_error);
 
 			maxResponseSize = request.maxSize;
 			sessionTimeout = request.timeout;
@@ -346,13 +346,13 @@ public:
 			}
 
 			ws = new WebSocket(dns, this);
-			connect(ws, SIGNAL(nextAddress(const QHostAddress &)), SLOT(req_nextAddress(const QHostAddress &)));
-			connect(ws, SIGNAL(connected()), SLOT(ws_connected()));
-			connect(ws, SIGNAL(readyRead()), SLOT(ws_readyRead()));
-			connect(ws, SIGNAL(framesWritten(int)), SLOT(ws_framesWritten(int)));
-			connect(ws, SIGNAL(peerClosing()), SLOT(ws_peerClosing()));
-			connect(ws, SIGNAL(closed()), SLOT(ws_closed()));
-			connect(ws, SIGNAL(error()), SLOT(ws_error()));
+			connect(ws, &WebSocket::nextAddress, this, &Private::req_nextAddress);
+			connect(ws, &WebSocket::connected, this, &Private::ws_connected);
+			connect(ws, &WebSocket::readyRead, this, &Private::ws_readyRead);
+			connect(ws, &WebSocket::framesWritten, this, &Private::ws_framesWritten);
+			connect(ws, &WebSocket::peerClosing, this, &Private::ws_peerClosing);
+			connect(ws, &WebSocket::closed, this, &Private::ws_closed);
+			connect(ws, &WebSocket::error, this, &Private::ws_error);
 
 			if(!request.connectHost.isEmpty())
 				ws->setConnectHost(request.connectHost);
@@ -369,14 +369,14 @@ public:
 		}
 
 		httpActivityTimer = new QTimer(this);
-		connect(httpActivityTimer, SIGNAL(timeout()), SLOT(httpActivity_timeout()));
+		connect(httpActivityTimer, &QTimer::timeout, this, &Private::httpActivity_timeout);
 		httpActivityTimer->setSingleShot(true);
 		httpActivityTimer->start(config->activityTimeout * 1000);
 
 		if(sessionTimeout != -1)
 		{
 			httpSessionTimer = new QTimer(this);
-			connect(httpSessionTimer, SIGNAL(timeout()), SLOT(httpSession_timeout()));
+			connect(httpSessionTimer, &QTimer::timeout, this, &Private::httpSession_timeout);
 			httpSessionTimer->setSingleShot(true);
 			httpSessionTimer->start(sessionTimeout);
 		}
@@ -384,12 +384,12 @@ public:
 		if(transport == WebSocketTransport || (transport == HttpTransport && mode == Worker::Stream))
 		{
 			expireTimer = new QTimer(this);
-			connect(expireTimer, SIGNAL(timeout()), SLOT(expire_timeout()));
+			connect(expireTimer, &QTimer::timeout, this, &Private::expire_timeout);
 			expireTimer->setSingleShot(true);
 			expireTimer->start(SESSION_EXPIRE);
 
 			keepAliveTimer = new QTimer(this);
-			connect(keepAliveTimer, SIGNAL(timeout()), SLOT(keepAlive_timeout()));
+			connect(keepAliveTimer, &QTimer::timeout, this, &Private::keepAlive_timeout);
 			keepAliveTimer->start(SESSION_EXPIRE / 2);
 		}
 

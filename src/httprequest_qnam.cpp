@@ -177,7 +177,7 @@ public:
 		if(method == "POST" || method == "PUT")
 		{
 			outdev = new ReqBodyDevice(this);
-			connect(outdev, SIGNAL(bytesTaken(int)), SLOT(outdev_bytesTaken(int)));
+			connect(outdev, &ReqBodyDevice::bytesTaken, this, &Private::outdev_bytesTaken);
 			outdev->open(QIODevice::ReadOnly);
 
 			startConnect();
@@ -233,7 +233,7 @@ public:
 		else
 		{
 			JDnsSharedRequest *dreq = new JDnsSharedRequest(dns);
-			connect(dreq, SIGNAL(resultsReady()), SLOT(dreq_resultsReady()));
+			connect(dreq, &JDnsSharedRequest::resultsReady, this, &Private::dreq_resultsReady);
 			dreq->query(QUrl::toAce(host), QJDns::A);
 		}
 	}
@@ -324,10 +324,10 @@ private slots:
 		}
 
 		reply->setParent(this);
-		connect(reply, SIGNAL(readyRead()), SLOT(reply_readyRead()));
-		connect(reply, SIGNAL(finished()), SLOT(reply_finished()));
-		connect(reply, SIGNAL(error(QNetworkReply::NetworkError)), SLOT(reply_error(QNetworkReply::NetworkError)));
-		connect(reply, SIGNAL(sslErrors(const QList<QSslError> &)), SLOT(reply_sslErrors(const QList<QSslError> &)));
+		connect(reply, &QNetworkReply::readyRead, this, &Private::reply_readyRead);
+		connect(reply, &QNetworkReply::finished, this, &Private::reply_finished);
+		connect(reply, &QNetworkReply::error, this, &Private::reply_error);
+		connect(reply, &QNetworkReply::sslErrors, this, &Private::reply_sslErrors);
 	}
 
 	void dreq_resultsReady()

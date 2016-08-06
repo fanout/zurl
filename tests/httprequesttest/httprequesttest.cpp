@@ -48,7 +48,7 @@ public:
 	bool listen()
 	{
 		server = new QTcpServer(this);
-		connect(server, SIGNAL(newConnection()), SLOT(server_newConnection()));
+		connect(server, &QTcpServer::newConnection, this, &HttpServer::server_newConnection);
 		if(server->listen(QHostAddress::Any, 0))
 			return true;
 
@@ -112,8 +112,8 @@ private slots:
 
 		sock = server->nextPendingConnection();
 		assert(sock);
-		connect(sock, SIGNAL(readyRead()), SLOT(sock_readyRead()));
-		connect(sock, SIGNAL(disconnected()), SLOT(sock_disconnected()));
+		connect(sock, &QTcpSocket::readyRead, this, &HttpServer::sock_readyRead);
+		connect(sock, &QTcpSocket::disconnected, this, &HttpServer::sock_disconnected);
 	}
 
 	void sock_readyRead()
@@ -173,7 +173,7 @@ private slots:
 	}
 };
 
-class DnsDebug : QObject
+class DnsDebug : public QObject
 {
 	Q_OBJECT
 
@@ -185,7 +185,7 @@ public:
 		QObject(parent)
 	{
 		dnsDebug_ = new QJDnsSharedDebug(this);
-		connect(dnsDebug_, SIGNAL(readyRead()), SLOT(flush()));
+		connect(dnsDebug_, &QJDnsSharedDebug::readyRead, this, &DnsDebug::flush);
 	}
 
 	void applyTo(QJDnsShared *dns)

@@ -370,8 +370,8 @@ public:
 		followedRedirects(0)
 	{
 		resolver = new AddressResolver(dns, this);
-		connect(resolver, SIGNAL(resultsReady(const QList<QHostAddress> &)), SLOT(resolver_resultsReady(const QList<QHostAddress> &)));
-		connect(resolver, SIGNAL(error()), SLOT(resolver_error()));
+		connect(resolver, &AddressResolver::resultsReady, this, &Private::resolver_resultsReady);
+		connect(resolver, &AddressResolver::error, this, &Private::resolver_error);
 	}
 
 	~Private()
@@ -862,12 +862,12 @@ private slots:
 			return;
 
 		sock = new QSslSocket(this);
-		connect(sock, SIGNAL(connected()), SLOT(sock_connected()));
-		connect(sock, SIGNAL(readyRead()), SLOT(sock_readyRead()));
-		connect(sock, SIGNAL(bytesWritten(qint64)), SLOT(sock_bytesWritten(qint64)));
-		connect(sock, SIGNAL(disconnected()), SLOT(sock_disconnected()));
-		connect(sock, SIGNAL(error(QAbstractSocket::SocketError)), SLOT(sock_error(QAbstractSocket::SocketError)));
-		connect(sock, SIGNAL(sslErrors(const QList<QSslError> &)), SLOT(sock_sslErrors(const QList<QSslError> &)));
+		connect(sock, &QSslSocket::connected, this, &Private::sock_connected);
+		connect(sock, &QSslSocket::readyRead, this, &Private::sock_readyRead);
+		connect(sock, &QSslSocket::bytesWritten, this, &Private::sock_bytesWritten);
+		connect(sock, &QSslSocket::disconnected, this, &Private::sock_disconnected);
+		connect(sock, static_cast<void (QSslSocket::*)(QAbstractSocket::SocketError)>(&QSslSocket::error), this, &Private::sock_error);
+		connect(sock, static_cast<void (QSslSocket::*)(const QList<QSslError> &)>(&QSslSocket::sslErrors), this, &Private::sock_sslErrors);
 
 		bool useSsl = (requestUri.scheme() == "wss");
 		int port = requestUri.port(useSsl ? 443 : 80);
