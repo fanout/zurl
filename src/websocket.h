@@ -79,6 +79,7 @@ public:
 
 	void setConnectHost(const QString &host);
 	void setIgnoreTlsErrors(bool on);
+	void setFollowRedirects(int maxRedirects); // -1 to disable
 	void setMaxFrameSize(int size);
 
 	void start(const QUrl &uri, const HttpHeaders &headers = HttpHeaders());

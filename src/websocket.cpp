@@ -25,7 +25,7 @@
 #include "bufferlist.h"
 #include "addressresolver.h"
 
-#define REJECT_BODY_MAX 100000
+#define RESPONSE_BODY_MAX 100000
 #define MAGIC_STRING "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 static quint16 read16(const quint8 *in)
@@ -320,6 +320,7 @@ public:
 	State state;
 	QString connectHost;
 	bool ignoreTlsErrors;
+	int maxRedirects;
 	int maxFrameSize;
 	QSslSocket *sock;
 	QUrl requestUri;
@@ -330,7 +331,7 @@ public:
 	HttpHeaders responseHeaders;
 	BufferList responseBody;
 	int responseContentLength;
-	bool readingRejectBody;
+	bool readingResponseBody;
 	bool chunked;
 	bool peerClosing;
 	int peerCloseCode;
@@ -344,6 +345,7 @@ public:
 	int inBytes;
 	bool pendingRead;
 	QList<WriteItem> pendingWrites;
+	int followedRedirects;
 
 	Private(WebSocket *_q, QJDnsShared *_dns) :
 		QObject(_q),
@@ -351,11 +353,12 @@ public:
 		dns(_dns),
 		state(Idle),
 		ignoreTlsErrors(false),
+		maxRedirects(-1),
 		maxFrameSize(-1),
 		sock(0),
 		responseCode(-1),
 		responseContentLength(-1),
-		readingRejectBody(false),
+		readingResponseBody(false),
 		chunked(false),
 		peerClosing(false),
 		peerCloseCode(-1),
@@ -363,7 +366,8 @@ public:
 		mostSignificantError(ErrorGeneric),
 		inStatusLine(true),
 		inBytes(0),
-		pendingRead(false)
+		pendingRead(false),
+		followedRedirects(0)
 	{
 		resolver = new AddressResolver(dns, this);
 		connect(resolver, SIGNAL(resultsReady(const QList<QHostAddress> &)), SLOT(resolver_resultsReady(const QList<QHostAddress> &)));
@@ -391,10 +395,27 @@ public:
 		requestUri = uri;
 		requestHeaders = headers;
 
+		tryConnect();
+	}
+
+	void tryConnect()
+	{
+		responseCode = -1;
+		responseContentLength = -1;
+		readingResponseBody = false;
+		chunked = false;
+		peerClosing = false;
+		peerCloseCode = -1;
+		errorCondition = ErrorNone;
+		mostSignificantError = ErrorGeneric;
+		inbuf.clear();
+		inStatusLine = true;
+		pendingRead = false;
+
 		if(!connectHost.isEmpty())
 			host = connectHost;
 		else
-			host = uri.host();
+			host = requestUri.host();
 
 		state = Connecting;
 		resolver->start(host);
@@ -553,7 +574,7 @@ public:
 				}
 				else
 				{
-					// we'll read the response body before emitting error
+					// we'll read the response body before acting
 					if(responseHeaders.contains("Content-Length"))
 					{
 						bool ok;
@@ -576,7 +597,7 @@ public:
 					responseHeaders.removeAll("Content-Length");
 					responseHeaders.removeAll("Transfer-Encoding");
 
-					readingRejectBody = true;
+					readingResponseBody = true;
 				}
 			}
 			else
@@ -596,6 +617,46 @@ public:
 		}
 
 		return true;
+	}
+
+	void handleResponse()
+	{
+		if(maxRedirects > 0
+			&& (responseCode == 301 || responseCode == 302 || responseCode == 303 || responseCode == 307 || responseCode == 308)
+			&& responseHeaders.contains("Location"))
+		{
+			QByteArray location = responseHeaders.get("Location");
+
+			log_debug("ws: received redirect response, code=%d location=[%s]", responseCode, location.data());
+
+			if(followedRedirects >= maxRedirects)
+			{
+				log_debug("ws: too many redirects");
+
+				cleanup();
+				state = Idle;
+				errorCondition = ErrorGeneric;
+				emit q->error();
+				return;
+			}
+
+			++followedRedirects;
+
+			requestUri = QUrl::fromEncoded(location);
+
+			cleanup();
+			tryConnect();
+		}
+		else
+		{
+			// force content-length on rejections
+			responseHeaders += HttpHeader("Content-Length", QByteArray::number(responseBody.size()));
+
+			cleanup();
+			state = Idle;
+			errorCondition = ErrorRejected;
+			emit q->error();
+		}
 	}
 
 	// return true if new frame to read
@@ -723,7 +784,7 @@ public:
 					break;
 				}
 
-				if(responseBody.size() + size > REJECT_BODY_MAX)
+				if(responseBody.size() + size > RESPONSE_BODY_MAX)
 				{
 					// can't fit the next chunk. we'll stop now
 					eof = true;
@@ -745,7 +806,7 @@ public:
 		{
 			if(!inbuf.isEmpty())
 			{
-				int avail = REJECT_BODY_MAX - responseBody.size();
+				int avail = RESPONSE_BODY_MAX - responseBody.size();
 
 				// don't read more than Content-Length
 				if(responseContentLength != -1)
@@ -755,19 +816,19 @@ public:
 				responseBody += inbuf.mid(0, size);
 				inbuf = inbuf.mid(size);
 
-				assert(responseBody.size() <= REJECT_BODY_MAX);
+				assert(responseBody.size() <= RESPONSE_BODY_MAX);
 			}
 
 			if(responseContentLength != -1)
 			{
 				assert(responseBody.size() <= responseContentLength);
 
-				if(responseBody.size() == responseContentLength || responseBody.size() == REJECT_BODY_MAX)
+				if(responseBody.size() == responseContentLength || responseBody.size() == RESPONSE_BODY_MAX)
 					eof = true;
 			}
 			else
 			{
-				if(responseBody.size() == REJECT_BODY_MAX)
+				if(responseBody.size() == RESPONSE_BODY_MAX)
 					eof = true;
 			}
 
@@ -776,18 +837,7 @@ public:
 		}
 
 		if(eof)
-			respondRejected();
-	}
-
-	void respondRejected()
-	{
-		// force content-length on rejections
-		responseHeaders += HttpHeader("Content-Length", QByteArray::number(responseBody.size()));
-
-		cleanup();
-		state = Idle;
-		errorCondition = ErrorRejected;
-		emit q->error();
+			handleResponse();
 	}
 
 private slots:
@@ -875,7 +925,7 @@ private slots:
 		requestHeaders.removeAll("Connection");
 		requestHeaders.removeAll("Sec-WebSocket-Version");
 		requestHeaders.removeAll("Sec-WebSocket-Key");
-		requestHeaders.removeAll("Accept-Encoding"); // we only support unencoded rejections
+		requestHeaders.removeAll("Accept-Encoding"); // we only support unencoded responses
 
 		// note: we let Sec-WebSocket-Extensions and
 		//   Sec-WebSocket-Protocol go through. clients should take
@@ -915,11 +965,11 @@ private slots:
 			log_debug("ws: read: %d", buf.size());
 			inbuf += buf;
 
-			if(!readingRejectBody)
+			if(!readingResponseBody)
 			{
 				QPointer<QObject> self = this;
 				bool ok = true;
-				while(state == Connecting && !readingRejectBody && ok)
+				while(state == Connecting && !readingResponseBody && ok)
 				{
 					int at = inbuf.indexOf('\n');
 					if(at == -1)
@@ -1006,9 +1056,9 @@ private slots:
 				curError = ErrorConnect;
 				break;
 			case QAbstractSocket::RemoteHostClosedError:
-				if(readingRejectBody && responseContentLength == -1 && !chunked)
+				if(readingResponseBody && responseContentLength == -1 && !chunked)
 				{
-					respondRejected();
+					handleResponse();
 					return;
 				}
 				curError = ErrorGeneric;
@@ -1064,6 +1114,11 @@ void WebSocket::setConnectHost(const QString &host)
 void WebSocket::setIgnoreTlsErrors(bool on)
 {
 	d->ignoreTlsErrors = on;
+}
+
+void WebSocket::setFollowRedirects(int maxRedirects)
+{
+	d->maxRedirects = maxRedirects;
 }
 
 void WebSocket::setMaxFrameSize(int size)
