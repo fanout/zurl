@@ -18,12 +18,14 @@
 #include "websocket.h"
 
 #include <assert.h>
+#include <openssl/x509.h>
 #include <QUrl>
 #include <QPointer>
 #include <QSslSocket>
 #include "log.h"
 #include "bufferlist.h"
 #include "addressresolver.h"
+#include "verifyhost.h"
 
 #define RESPONSE_BODY_MAX 100000
 #define MAGIC_STRING "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -319,6 +321,7 @@ public:
 	AddressResolver *resolver;
 	State state;
 	QString connectHost;
+	bool trustConnectHost;
 	bool ignoreTlsErrors;
 	int maxRedirects;
 	int maxFrameSize;
@@ -352,6 +355,7 @@ public:
 		q(_q),
 		dns(_dns),
 		state(Idle),
+		trustConnectHost(false),
 		ignoreTlsErrors(false),
 		maxRedirects(-1),
 		maxFrameSize(-1),
@@ -1049,6 +1053,8 @@ private slots:
 	{
 		log_debug("ws: sock_error: %d", (int)socketError);
 
+		bool tryAgain = true;
+
 		ErrorCondition curError;
 		switch(socketError)
 		{
@@ -1065,12 +1071,13 @@ private slots:
 				break;
 			case QAbstractSocket::SslHandshakeFailedError:
 				curError = ErrorTls;
+				tryAgain = false;
 				break;
 			default:
 				curError = ErrorGeneric;
 		}
 
-		if(state == Connected)
+		if(!tryAgain || state == Connected)
 		{
 			cleanup();
 			state = Idle;
@@ -1088,9 +1095,35 @@ private slots:
 
 	void sock_sslErrors(const QList<QSslError> &errors)
 	{
-		Q_UNUSED(errors);
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+		{
+			QStringList strs;
+			foreach(const QSslError &e, errors)
+				strs += e.errorString();
+			log_debug("ws: sslErrors: %s", qPrintable(strs.join(", ")));
+		}
 
-		if(ignoreTlsErrors)
+		bool hostMismatchOk = false;
+		if(errors.count() == 1 && errors[0].error() == QSslError::HostNameMismatch)
+		{
+			// if hostname doesn't match, check against connect host if trusted
+			if(!connectHost.isEmpty() && trustConnectHost)
+			{
+				QSslCertificate cert = sock->peerCertificate();
+				QByteArray der = cert.toDer();
+				const unsigned char *p = (const unsigned char *)der.data();
+				X509 *opensslCert = d2i_X509(NULL, &p, der.size());
+				if(opensslCert)
+				{
+					if(verifyhost(connectHost.toUtf8().data(), opensslCert) == CURLE_OK)
+						hostMismatchOk = true;
+
+					X509_free(opensslCert);
+				}
+			}
+		}
+
+		if(ignoreTlsErrors || hostMismatchOk)
 			sock->ignoreSslErrors();
 	}
 };
@@ -1109,6 +1142,11 @@ WebSocket::~WebSocket()
 void WebSocket::setConnectHost(const QString &host)
 {
 	d->connectHost = host;
+}
+
+void WebSocket::setTrustConnectHost(bool on)
+{
+	d->trustConnectHost = on;
 }
 
 void WebSocket::setIgnoreTlsErrors(bool on)

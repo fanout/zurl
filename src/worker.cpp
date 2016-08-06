@@ -359,6 +359,7 @@ public:
 			if(request.connectPort != -1)
 				request.uri.setPort(request.connectPort);
 
+			ws->setTrustConnectHost(request.trustConnectHost);
 			ws->setIgnoreTlsErrors(request.ignoreTlsErrors);
 			if(request.followRedirects)
 				ws->setFollowRedirects(8);
