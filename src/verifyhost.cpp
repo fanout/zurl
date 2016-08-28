@@ -32,7 +32,7 @@ in this Software without prior written authorization of the copyright holder.
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <openssl/crypto.h>
-#include <openssl/ssl.h>
+#include <openssl/x509.h>
 #include "log.h"
 
 #define DEBUGASSERT(x) assert(x)
