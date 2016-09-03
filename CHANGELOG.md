@@ -1,6 +1,14 @@
 Zurl Changelog
 ==============
 
+v. 1.6.0 (2016-09-03)
+
+  * Option trust-connect-host to trust certificate of connect host.
+  * WebSocket: support follow-redirects option.
+  * More correct handling of Host header.
+  * DNS A records are now picked randomly.
+  * When resolving "localhost", try absolute value first.
+
 v. 1.5.1 (2016-02-21)
 
   * Don't install tests.
