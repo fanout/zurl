@@ -27,6 +27,8 @@ in this Software without prior written authorization of the copyright holder.
 
 #include "verifyhost.h"
 
+#ifdef HAVE_OPENSSL
+
 #include <assert.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -458,3 +460,5 @@ CURLcode verifyhost(const char *host, X509 *server_cert)
 
   return result;
 }
+
+#endif

@@ -18,7 +18,9 @@
 #include "websocket.h"
 
 #include <assert.h>
+#ifdef HAVE_OPENSSL
 #include <openssl/x509.h>
+#endif
 #include <QUrl>
 #include <QPointer>
 #include <QSslSocket>
@@ -1109,6 +1111,7 @@ private slots:
 			// if hostname doesn't match, check against connect host if trusted
 			if(!connectHost.isEmpty() && trustConnectHost)
 			{
+#ifdef HAVE_OPENSSL
 				QSslCertificate cert = sock->peerCertificate();
 				QByteArray der = cert.toDer();
 				const unsigned char *p = (const unsigned char *)der.data();
@@ -1120,6 +1123,7 @@ private slots:
 
 					X509_free(opensslCert);
 				}
+#endif
 			}
 		}
 

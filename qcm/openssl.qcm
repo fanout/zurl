@@ -1,0 +1,52 @@
+/*
+-----BEGIN QCMOD-----
+name: openssl
+-----END QCMOD-----
+*/
+
+//----------------------------------------------------------------------------
+// qc_openssl
+//----------------------------------------------------------------------------
+class qc_openssl : public ConfObj
+{
+public:
+	qc_openssl(Conf *c) : ConfObj(c) {}
+	QString name() const { return "openssl >= 1.0.0"; }
+	QString shortname() const { return "openssl"; }
+
+	bool exec()
+	{
+		QString version;
+
+		QStringList cryptoIncs;
+		QString cryptoLibs, cryptoOther;
+		if(!conf->findPkgConfig("libcrypto", VersionMin, "1.0.0", &version, &cryptoIncs, &cryptoLibs, &cryptoOther))
+                        return false;
+
+		QStringList sslIncs;
+		QString sslLibs, sslOther;
+		if(!conf->findPkgConfig("libssl", VersionMin, "1.0.0", &version, &sslIncs, &sslLibs, &sslOther))
+                        return false;
+
+		QStringList incs = cryptoIncs;
+		foreach(const QString &inc, sslIncs)
+		{
+			if(!incs.contains(inc))
+				incs += inc;
+		}
+
+		QString libs;
+		if(!cryptoLibs.isEmpty())
+			libs += cryptoLibs;
+		if(!sslLibs.isEmpty())
+			libs += ' ' + sslLibs;
+
+		conf->addDefine("HAVE_OPENSSL");
+		foreach(const QString &inc, incs)
+			conf->addIncludePath(inc);
+		if(!libs.isEmpty())
+			conf->addLib(libs);
+
+		return true;
+	}
+};

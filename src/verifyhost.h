@@ -26,9 +26,13 @@ in this Software without prior written authorization of the copyright holder.
 #ifndef VERIFYHOST_H
 #define VERIFYHOST_H
 
+#ifdef HAVE_OPENSSL
+
 #include <openssl/x509v3.h>
 #include <curl/curl.h>
 
 CURLcode verifyhost(const char *host, X509 *server_cert);
+
+#endif
 
 #endif

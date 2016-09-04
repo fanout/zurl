@@ -19,7 +19,9 @@
 
 #include <assert.h>
 #include <sys/select.h>
+#ifdef HAVE_OPENSSL
 #include <openssl/ssl.h>
+#endif
 #include <QCoreApplication>
 #include <QSocketNotifier>
 #include <QTimer>
@@ -127,9 +129,11 @@ public:
 		curl_easy_setopt(easy, CURLOPT_HEADERFUNCTION, headerFunction_cb);
 		curl_easy_setopt(easy, CURLOPT_HEADERDATA, this);
 
+#ifdef HAVE_OPENSSL
 		curl_easy_setopt(easy, CURLOPT_SSL_VERIFYHOST, 0L);
 		curl_easy_setopt(easy, CURLOPT_SSL_CTX_FUNCTION, &sslCtxFunction_cb);
 		curl_easy_setopt(easy, CURLOPT_SSL_CTX_DATA, this);
+#endif
 
 		curl_easy_setopt(easy, CURLOPT_BUFFERSIZE, (long)BUFFER_SIZE);
 		curl_easy_setopt(easy, CURLOPT_ACCEPT_ENCODING, "");
@@ -326,6 +330,7 @@ public:
 		return self->headerFunction((char *)ptr, size * nmemb);
 	}
 
+#ifdef HAVE_OPENSSL
 	static CURLcode sslCtxFunction_cb(CURL *easy, SSL_CTX *context, void *userdata)
 	{
 		CurlConnection *self = (CurlConnection *)userdata;
@@ -337,6 +342,7 @@ public:
 		CurlConnection *self = (CurlConnection *)data;
 		return self->sslVerifyCallback(x509StoreContext);
 	}
+#endif
 
 	size_t debugFunction(CURL *easy, curl_infotype type, char *ptr, size_t size)
 	{
@@ -546,6 +552,7 @@ public:
 		return size;
 	}
 
+#ifdef HAVE_OPENSSL
 	CURLcode sslCtxFunction(CURL *_easy, SSL_CTX *context)
 	{
 		Q_UNUSED(_easy);
@@ -568,6 +575,7 @@ public:
 		X509_STORE_CTX_set_error(x509StoreContext, X509_V_ERR_SUBJECT_ISSUER_MISMATCH);
 		return 0;
 	}
+#endif
 
 	void done(CURLcode _result)
 	{
@@ -1082,8 +1090,12 @@ private slots:
 
 		if(ignoreTlsErrors)
 		{
-			// this will verify the host as well through sslVerifyCallback
 			curl_easy_setopt(conn->easy, CURLOPT_SSL_VERIFYPEER, 0L);
+
+#ifndef HAVE_OPENSSL
+			// if openssl used then this will already be disabled,
+			curl_easy_setopt(conn->easy, CURLOPT_SSL_VERIFYHOST, 0L);
+#endif
 		}
 
 		handleAdded = true;

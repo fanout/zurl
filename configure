@@ -18,6 +18,9 @@ Main options:
   --qtselect=[N]        Select major Qt version (4 or 5).
   --help                This help text.
 
+Dependency options:
+  --disable-openssl    Disable use of openssl
+
 EOT
 }
 
@@ -135,6 +138,11 @@ while [ $# -gt 0 ]; do
 			shift
 			;;
 
+		--disable-openssl)
+			QC_DISABLE_openssl="Y"
+			shift
+			;;
+
 		--verbose)
 			QC_VERBOSE="Y"
 			shift
@@ -159,6 +167,7 @@ echo PREFIX=$PREFIX
 echo BINDIR=$BINDIR
 echo EX_QTDIR=$EX_QTDIR
 echo QC_EXTRACONF=$QC_EXTRACONF
+echo QC_DISABLE_openssl=$QC_DISABLE_openssl
 echo
 fi
 
@@ -387,22 +396,72 @@ public:
 		return(QT_VERSION >= 0x050200);
 	}
 };
+#line 1 "openssl.qcm"
+/*
+-----BEGIN QCMOD-----
+name: openssl
+-----END QCMOD-----
+*/
+
+//----------------------------------------------------------------------------
+// qc_openssl
+//----------------------------------------------------------------------------
+class qc_openssl : public ConfObj
+{
+public:
+	qc_openssl(Conf *c) : ConfObj(c) {}
+	QString name() const { return "openssl >= 1.0.0"; }
+	QString shortname() const { return "openssl"; }
+
+	bool exec()
+	{
+		QString version;
+
+		QStringList cryptoIncs;
+		QString cryptoLibs, cryptoOther;
+		if(!conf->findPkgConfig("libcrypto", VersionMin, "1.0.0", &version, &cryptoIncs, &cryptoLibs, &cryptoOther))
+                        return false;
+
+		QStringList sslIncs;
+		QString sslLibs, sslOther;
+		if(!conf->findPkgConfig("libssl", VersionMin, "1.0.0", &version, &sslIncs, &sslLibs, &sslOther))
+                        return false;
+
+		QStringList incs = cryptoIncs;
+		foreach(const QString &inc, sslIncs)
+		{
+			if(!incs.contains(inc))
+				incs += inc;
+		}
+
+		QString libs;
+		if(!cryptoLibs.isEmpty())
+			libs += cryptoLibs;
+		if(!sslLibs.isEmpty())
+			libs += ' ' + sslLibs;
+
+		conf->addDefine("HAVE_OPENSSL");
+		foreach(const QString &inc, incs)
+			conf->addIncludePath(inc);
+		if(!libs.isEmpty())
+			conf->addLib(libs);
+
+		return true;
+	}
+};
 
 EOT
 cat >"$1/modules_new.cpp" <<EOT
     o = new qc_qt52(conf);
     o->required = true;
     o->disabled = false;
-    o = new qc_internal_pkgconfig(conf, "libcurl", "libcurl >= 7.20", VersionMin, "7.20");
-    o->required = true;
-    o->disabled = false;
-    o = new qc_internal_pkgconfig(conf, "libcrypto", "openssl libcrypto >= 1.0", VersionMin, "1.0");
-    o->required = true;
-    o->disabled = false;
-    o = new qc_internal_pkgconfig(conf, "libssl", "openssl libssl >= 1.0", VersionMin, "1.0");
-    o->required = true;
-    o->disabled = false;
     o = new qc_internal_pkgconfig(conf, "libzmq", "libzmq >= 2.0", VersionMin, "2.0");
+    o->required = true;
+    o->disabled = false;
+    o = new qc_openssl(conf);
+    o->required = false;
+    o->disabled = false;
+    o = new qc_internal_pkgconfig(conf, "libcurl", "libcurl >= 7.20", VersionMin, "7.20");
     o->required = true;
     o->disabled = false;
 
@@ -1612,6 +1671,7 @@ export PREFIX
 export BINDIR
 export EX_QTDIR
 export QC_EXTRACONF
+export QC_DISABLE_openssl
 export QC_VERBOSE
 export QC_QTSELECT
 rm -rf ".qconftemp"
