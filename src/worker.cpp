@@ -43,6 +43,19 @@ public:
 		WebSocketTransport
 	};
 
+	enum State
+	{
+		NotStarted,
+		Started,
+		Closing,
+		PeerClosing,
+		CloseWait,
+		Finished,
+		Cancel,
+		Error,
+		Stopped
+	};
+
 	Worker *q;
 	QJDnsShared *dns;
 	AppConfig *config;
@@ -50,6 +63,8 @@ public:
 	Worker::Format format;
 	QByteArray toAddress;
 	QByteArray rid;
+	State state;
+	QByteArray errorCondition;
 	int inSeq, outSeq;
 	int outCredits;
 	bool outStream;
@@ -65,15 +80,15 @@ public:
 	bool stuffToRead;
 	BufferList inbuf; // for single mode
 	int bytesReceived;
-	bool pendingSend;
 	QTimer *expireTimer;
 	QTimer *httpActivityTimer;
 	QTimer *httpSessionTimer;
 	QTimer *keepAliveTimer;
+	QTimer *updateTimer;
 	WebSocket::Frame::Type lastReceivedFrameType;
 	bool wsSendingMessage;
 	QList<int> wsPendingWrites;
-	bool wsPeerClosing;
+	bool wsClosed;
 	bool wsPendingPeerClose;
 
 	Private(QJDnsShared *_dns, AppConfig *_config, Worker::Format _format, Worker *_q) :
@@ -82,26 +97,36 @@ public:
 		dns(_dns),
 		config(_config),
 		format(_format),
+		state(NotStarted),
 		hreq(0),
 		ws(0),
-		pendingSend(false),
 		expireTimer(0),
 		httpActivityTimer(0),
 		httpSessionTimer(0),
 		keepAliveTimer(0),
 		lastReceivedFrameType(WebSocket::Frame::Text),
 		wsSendingMessage(false),
-		wsPeerClosing(false),
+		wsClosed(false),
 		wsPendingPeerClose(false)
 	{
+		updateTimer = new QTimer(this);
+		connect(updateTimer, &QTimer::timeout, this, &Private::doUpdate);
+		updateTimer->setSingleShot(true);
 	}
 
 	~Private()
 	{
+		cleanup();
+
+		updateTimer->disconnect(this);
+		updateTimer->setParent(0);
+		updateTimer->deleteLater();
 	}
 
 	void cleanup()
 	{
+		updateTimer->stop();
+
 		delete hreq;
 		hreq = 0;
 
@@ -139,6 +164,8 @@ public:
 			keepAliveTimer->deleteLater();
 			keepAliveTimer = 0;
 		}
+
+		state = Stopped;
 	}
 
 	void start(const QVariant &vrequest, Mode mode)
@@ -146,6 +173,8 @@ public:
 		outSeq = 0;
 		outCredits = 0;
 		quiet = false;
+
+		state = Started;
 
 		ZhttpRequestPacket request;
 		if(!request.fromVariant(vrequest))
@@ -157,14 +186,9 @@ public:
 			toAddress = vhash.value("from").toByteArray();
 			QByteArray type = vhash.value("type").toByteArray();
 			if(!toAddress.isEmpty() && type != "error" && type != "cancel")
-			{
-				QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
-			}
+				deferError("bad-request");
 			else
-			{
-				cleanup();
-				QMetaObject::invokeMethod(q, "finished", Qt::QueuedConnection);
-			}
+				deferFinished();
 
 			return;
 		}
@@ -183,7 +207,7 @@ public:
 		{
 			log_warning("missing request uri");
 
-			QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
+			deferError("bad-request");
 			return;
 		}
 
@@ -200,7 +224,7 @@ public:
 		{
 			log_warning("unsupported scheme");
 
-			QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
+			deferError("bad-request");
 			return;
 		}
 
@@ -208,7 +232,7 @@ public:
 		{
 			log_warning("websocket must be used from stream interface");
 
-			QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
+			deferError("bad-request");
 			return;
 		}
 
@@ -236,7 +260,7 @@ public:
 			{
 				log_warning("missing request method");
 
-				QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
+				deferError("bad-request");
 				return;
 			}
 
@@ -247,7 +271,7 @@ public:
 			{
 				log_warning("streamed input must start with seq 0");
 
-				QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
+				deferError("bad-request");
 				return;
 			}
 
@@ -256,7 +280,7 @@ public:
 			{
 				log_warning("cannot use streamed input on router interface");
 
-				QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
+				deferError("bad-request");
 				return;
 			}
 
@@ -266,7 +290,7 @@ public:
 
 			if(!isAllowed(request.uri.host()) || (!request.connectHost.isEmpty() && !isAllowed(request.connectHost)))
 			{
-				QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "policy-violation"));
+				deferError("policy-violation");
 				return;
 			}
 
@@ -313,7 +337,7 @@ public:
 			{
 				log_warning("websocket input must start with seq 0");
 
-				QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
+				deferError("bad-request");
 				return;
 			}
 
@@ -321,7 +345,7 @@ public:
 			{
 				log_warning("websocket input must provide from address");
 
-				QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
+				deferError("bad-request");
 				return;
 			}
 
@@ -329,7 +353,7 @@ public:
 
 			if(!isAllowed(request.uri.host()) || (!request.connectHost.isEmpty() && !isAllowed(request.connectHost)))
 			{
-				QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "policy-violation"));
+				deferError("policy-violation");
 				return;
 			}
 
@@ -444,19 +468,17 @@ public:
 
 	void write(const QVariant &vrequest)
 	{
+		if(!(state == Started || state == Closing || state == PeerClosing))
+			return;
+
 		ZhttpRequestPacket request;
 		if(!request.fromVariant(vrequest))
 		{
 			QVariantHash vhash = vrequest.toHash();
 			if(vhash["type"].toByteArray() != "cancel")
-			{
-				QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
-			}
+				deferError("bad-request");
 			else
-			{
-				cleanup();
-				QMetaObject::invokeMethod(q, "finished", Qt::QueuedConnection);
-			}
+				deferFinished();
 
 			return;
 		}
@@ -465,22 +487,16 @@ public:
 		if(inSeq == -1 || request.seq == -1 || request.seq != inSeq + 1)
 		{
 			if(request.type != ZhttpRequestPacket::Cancel)
-			{
-				QMetaObject::invokeMethod(this, "respondCancel", Qt::QueuedConnection);
-			}
+				deferCancel();
 			else
-			{
-				cleanup();
-				QMetaObject::invokeMethod(q, "finished", Qt::QueuedConnection);
-			}
+				deferFinished();
 
 			return;
 		}
 
 		if(request.type == ZhttpRequestPacket::Cancel)
 		{
-			cleanup();
-			QMetaObject::invokeMethod(q, "finished", Qt::QueuedConnection);
+			deferFinished();
 			return;
 		}
 
@@ -499,7 +515,7 @@ public:
 			{
 				if(bodySent)
 				{
-					QMetaObject::invokeMethod(this, "respondError", Qt::QueuedConnection, Q_ARG(QByteArray, "bad-request"));
+					deferError("bad-request");
 					return;
 				}
 
@@ -520,41 +536,59 @@ public:
 		{
 			if(request.type == ZhttpRequestPacket::Data || request.type == ZhttpRequestPacket::Close || request.type == ZhttpRequestPacket::Ping || request.type == ZhttpRequestPacket::Pong)
 			{
-				refreshActivityTimeout();
-
-				if(request.type == ZhttpRequestPacket::Data)
+				if(wsClosed)
 				{
-					WebSocket::Frame::Type ftype;
-					if(wsSendingMessage)
-						ftype = WebSocket::Frame::Continuation;
-					else if(request.contentType == "binary")
-						ftype = WebSocket::Frame::Binary;
-					else
-						ftype = WebSocket::Frame::Text;
-
-					wsSendingMessage = request.more;
-
-					wsPendingWrites += request.body.size();
-					ws->writeFrame(WebSocket::Frame(ftype, request.body, request.more));
+					deferError("bad-request");
+					return;
 				}
-				else if(request.type == ZhttpRequestPacket::Ping)
+
+				if(request.type == ZhttpRequestPacket::Data || request.type == ZhttpRequestPacket::Ping || request.type == ZhttpRequestPacket::Pong)
 				{
-					wsPendingWrites += 0;
-					ws->writeFrame(WebSocket::Frame(WebSocket::Frame::Ping, QByteArray(), false));
-				}
-				else if(request.type == ZhttpRequestPacket::Pong)
-				{
-					wsPendingWrites += 0;
-					ws->writeFrame(WebSocket::Frame(WebSocket::Frame::Pong, QByteArray(), false));
+					refreshActivityTimeout();
+
+					if(request.type == ZhttpRequestPacket::Data)
+					{
+						WebSocket::Frame::Type ftype;
+						if(wsSendingMessage)
+							ftype = WebSocket::Frame::Continuation;
+						else if(request.contentType == "binary")
+							ftype = WebSocket::Frame::Binary;
+						else
+							ftype = WebSocket::Frame::Text;
+
+						wsSendingMessage = request.more;
+
+						wsPendingWrites += request.body.size();
+						ws->writeFrame(WebSocket::Frame(ftype, request.body, request.more));
+					}
+					else if(request.type == ZhttpRequestPacket::Ping)
+					{
+						wsPendingWrites += 0;
+						ws->writeFrame(WebSocket::Frame(WebSocket::Frame::Ping, QByteArray(), false));
+					}
+					else if(request.type == ZhttpRequestPacket::Pong)
+					{
+						wsPendingWrites += 0;
+						ws->writeFrame(WebSocket::Frame(WebSocket::Frame::Pong, QByteArray(), false));
+					}
 				}
 				else if(request.type == ZhttpRequestPacket::Close)
+				{
 					ws->close(request.code);
+
+					wsClosed = true;
+
+					if(state == Started)
+						state = Closing;
+					else // PeerClosing
+						state = CloseWait;
+				}
 			}
 		}
 
 		// if we needed credits to send something, take care of that now
 		if(request.credits != -1 && stuffToRead)
-			trySend();
+			update();
 	}
 
 	static bool matchExp(const QString &exp, const QString &s)
@@ -632,13 +666,32 @@ public:
 			emit q->readyRead(toAddress, out.toVariant());
 	}
 
-	void doSend()
+	void update()
 	{
-		if(!pendingSend)
-		{
-			pendingSend = true;
-			QMetaObject::invokeMethod(this, "trySend", Qt::QueuedConnection);
-		}
+		if(!updateTimer->isActive())
+			updateTimer->start();
+	}
+
+	void deferFinished()
+	{
+		cleanup();
+		state = Finished;
+		update();
+	}
+
+	void deferCancel()
+	{
+		cleanup();
+		state = Cancel;
+		update();
+	}
+
+	void deferError(const QByteArray &condition)
+	{
+		cleanup();
+		state = Error;
+		errorCondition = condition;
+		update();
 	}
 
 	void refreshTimeout()
@@ -649,151 +702,6 @@ public:
 	void refreshActivityTimeout()
 	{
 		httpActivityTimer->start(config->activityTimeout * 1000);
-	}
-
-	void tryCleanup()
-	{
-		if(ws->state() == WebSocket::Idle && ws->framesAvailable() == 0)
-		{
-			cleanup();
-			emit q->finished();
-		}
-	}
-
-private slots:
-	// emits signals, but safe to delete after
-	void trySend()
-	{
-		QPointer<QObject> self = this;
-
-		pendingSend = false;
-		stuffToRead = false;
-
-		if(transport == HttpTransport)
-		{
-			ZhttpResponsePacket resp;
-			resp.type = ZhttpResponsePacket::Data;
-
-			if(!sentHeader)
-			{
-				resp.code = hreq->responseCode();
-				resp.reason = hreq->responseReason();
-				resp.headers = hreq->responseHeaders();
-				sentHeader = true;
-			}
-
-			// note: we always set body, even if empty
-
-			if(outStream)
-			{
-				// note: we skip credits handling if quiet mode
-
-				QByteArray buf;
-
-				if(!quiet)
-					buf = hreq->readResponseBody(outCredits);
-				else
-					buf = hreq->readResponseBody(); // all
-
-				if(!buf.isEmpty())
-				{
-					if(maxResponseSize != -1 && bytesReceived + buf.size() > maxResponseSize)
-					{
-						respondError("max-size-exceeded");
-						return;
-					}
-				}
-
-				resp.body = buf;
-
-				bytesReceived += resp.body.size();
-
-				if(!quiet)
-					outCredits -= resp.body.size();
-
-				resp.more = (hreq->bytesAvailable() > 0 || !hreq->isFinished());
-
-				if(hreq->bytesAvailable() > 0)
-					stuffToRead = true;
-			}
-			else
-			{
-				resp.body = inbuf.take();
-			}
-
-			writeResponse(resp);
-			if(!self)
-				return;
-
-			if(!resp.more)
-			{
-				cleanup();
-				emit q->finished();
-			}
-		}
-		else // WebSocketTransport
-		{
-			while(ws->framesAvailable() > 0 && outCredits >= ws->nextFrameSize())
-			{
-				WebSocket::Frame frame = ws->readFrame();
-				outCredits -= frame.data.size();
-
-				if(frame.type == WebSocket::Frame::Continuation || frame.type == WebSocket::Frame::Text || frame.type == WebSocket::Frame::Binary)
-				{
-					if(frame.type == WebSocket::Frame::Continuation)
-						frame.type = lastReceivedFrameType;
-					else
-						lastReceivedFrameType = frame.type;
-
-					ZhttpResponsePacket resp;
-					resp.type = ZhttpResponsePacket::Data;
-					if(frame.type == WebSocket::Frame::Binary)
-						resp.contentType = "binary";
-					resp.body = frame.data;
-					resp.more = frame.more;
-					writeResponse(resp);
-					if(!self)
-						return;
-				}
-				else if(frame.type == WebSocket::Frame::Ping)
-				{
-					ZhttpResponsePacket resp;
-					resp.type = ZhttpResponsePacket::Ping;
-					writeResponse(resp);
-					if(!self)
-						return;
-				}
-				else if(frame.type == WebSocket::Frame::Pong)
-				{
-					ZhttpResponsePacket resp;
-					resp.type = ZhttpResponsePacket::Pong;
-					writeResponse(resp);
-					if(!self)
-						return;
-				}
-			}
-
-			if(ws->framesAvailable() > 0)
-			{
-				stuffToRead = true;
-			}
-			else
-			{
-				if(wsPendingPeerClose)
-				{
-					wsPendingPeerClose = false;
-
-					ZhttpResponsePacket resp;
-					resp.type = ZhttpResponsePacket::Close;
-					resp.code = ws->peerCloseCode();
-					writeResponse(resp);
-					if(!self)
-						return;
-				}
-
-				tryCleanup();
-			}
-		}
 	}
 
 	void respondError(const QByteArray &condition)
@@ -840,6 +748,190 @@ private slots:
 		emit q->finished();
 	}
 
+private slots:
+	// emits signals, but safe to delete after
+	void doUpdate()
+	{
+		QPointer<QObject> self = this;
+
+		// if we had a pending update, we can cancel since we're updating now
+		if(updateTimer->isActive())
+			updateTimer->stop();
+
+		if(transport == HttpTransport)
+		{
+			if(state == Started)
+			{
+				if(!stuffToRead)
+					return;
+
+				stuffToRead = false;
+
+				ZhttpResponsePacket resp;
+				resp.type = ZhttpResponsePacket::Data;
+
+				if(!sentHeader)
+				{
+					resp.code = hreq->responseCode();
+					resp.reason = hreq->responseReason();
+					resp.headers = hreq->responseHeaders();
+					sentHeader = true;
+				}
+
+				// note: we always set body, even if empty
+
+				if(outStream)
+				{
+					// note: we skip credits handling if quiet mode
+
+					QByteArray buf;
+
+					if(!quiet)
+						buf = hreq->readResponseBody(outCredits);
+					else
+						buf = hreq->readResponseBody(); // all
+
+					if(!buf.isEmpty())
+					{
+						if(maxResponseSize != -1 && bytesReceived + buf.size() > maxResponseSize)
+						{
+							respondError("max-size-exceeded");
+							return;
+						}
+					}
+
+					resp.body = buf;
+
+					bytesReceived += resp.body.size();
+
+					if(!quiet)
+						outCredits -= resp.body.size();
+
+					resp.more = (hreq->bytesAvailable() > 0 || !hreq->isFinished());
+
+					if(hreq->bytesAvailable() > 0)
+						stuffToRead = true;
+				}
+				else
+				{
+					resp.body = inbuf.take();
+				}
+
+				writeResponse(resp);
+				if(!self)
+					return;
+
+				if(!resp.more)
+				{
+					cleanup();
+					emit q->finished();
+				}
+			}
+			else if(state == Finished)
+			{
+				cleanup();
+				emit q->finished();
+			}
+			else if(state == Cancel)
+			{
+				respondCancel();
+			}
+			else if(state == Error)
+			{
+				respondError(errorCondition);
+			}
+		}
+		else // WebSocketTransport
+		{
+			if(state == Started || state || Closing || state == PeerClosing)
+			{
+				if(stuffToRead)
+				{
+					stuffToRead = false;
+
+					while(ws->framesAvailable() > 0 && outCredits >= ws->nextFrameSize())
+					{
+						WebSocket::Frame frame = ws->readFrame();
+						outCredits -= frame.data.size();
+
+						if(frame.type == WebSocket::Frame::Continuation || frame.type == WebSocket::Frame::Text || frame.type == WebSocket::Frame::Binary)
+						{
+							if(frame.type == WebSocket::Frame::Continuation)
+								frame.type = lastReceivedFrameType;
+							else
+								lastReceivedFrameType = frame.type;
+
+							ZhttpResponsePacket resp;
+							resp.type = ZhttpResponsePacket::Data;
+							if(frame.type == WebSocket::Frame::Binary)
+								resp.contentType = "binary";
+							resp.body = frame.data;
+							resp.more = frame.more;
+							writeResponse(resp);
+							if(!self)
+								return;
+						}
+						else if(frame.type == WebSocket::Frame::Ping)
+						{
+							ZhttpResponsePacket resp;
+							resp.type = ZhttpResponsePacket::Ping;
+							writeResponse(resp);
+							if(!self)
+								return;
+						}
+						else if(frame.type == WebSocket::Frame::Pong)
+						{
+							ZhttpResponsePacket resp;
+							resp.type = ZhttpResponsePacket::Pong;
+							writeResponse(resp);
+							if(!self)
+								return;
+						}
+					}
+
+					if(ws->framesAvailable() > 0)
+					{
+						stuffToRead = true;
+					}
+				}
+
+				if(wsPendingPeerClose && !stuffToRead)
+				{
+					wsPendingPeerClose = false;
+
+					ZhttpResponsePacket resp;
+					resp.type = ZhttpResponsePacket::Close;
+					resp.code = ws->peerCloseCode();
+					writeResponse(resp);
+					if(!self)
+						return;
+
+					if(state == Closing)
+					{
+						cleanup();
+						emit q->finished();
+						return;
+					}
+
+					state = PeerClosing;
+				}
+			}
+			else if(state == Finished)
+			{
+				cleanup();
+				emit q->finished();
+			}
+			else if(state == Cancel)
+			{
+				respondCancel();
+			}
+			else if(state == Error)
+			{
+				respondError(errorCondition);
+			}
+		}
+	}
+
 	void req_nextAddress(const QHostAddress &addr)
 	{
 		if(!isAllowed(addr.toString()))
@@ -879,7 +971,7 @@ private slots:
 		}
 
 		// this will defer for a cycle, to pick up a potential disconnect as well
-		doSend();
+		update();
 	}
 
 	void req_bytesWritten(int count)
@@ -941,7 +1033,7 @@ private slots:
 		if(outCredits < 1)
 			return;
 
-		trySend();
+		doUpdate();
 	}
 
 	void ws_framesWritten(int count)
@@ -958,25 +1050,28 @@ private slots:
 
 	void ws_peerClosing()
 	{
-		wsPeerClosing = true;
+		assert(state == Started);
+
+		// flag to peer close once all queued data is sent
 		wsPendingPeerClose = true;
 
-		trySend();
+		doUpdate();
 	}
 
 	void ws_closed()
 	{
-		if(wsPeerClosing)
+		if(state == Closing)
 		{
-			// we were acking the peer's close, so we're done. well, as soon as all
-			//   data is read that is.
-			tryCleanup();
-		}
-		else
-		{
-			// the peer is acking our close. flag to send along the ack
+			// flag to peer close once all queued data is sent
 			wsPendingPeerClose = true;
-			trySend();
+
+			doUpdate();
+		}
+		else if(state == CloseWait)
+		{
+			// we were acking the peer's close, so we're done
+			cleanup();
+			emit q->finished();
 		}
 	}
 
