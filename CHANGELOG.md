@@ -1,6 +1,11 @@
 Zurl Changelog
 ==============
 
+v. 1.7.0 (2016-10-27)
+
+  * Fix crash when receiving message for session during close.
+  * Make OpenSSL support optional.
+
 v. 1.6.0 (2016-09-03)
 
   * Option trust-connect-host to trust certificate of connect host.
