@@ -563,7 +563,11 @@ public:
 
 	int sslVerifyCallback(X509_STORE_CTX *x509StoreContext)
 	{
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
 		X509 *peerCert = x509StoreContext->cert;
+#else
+		X509 *peerCert = X509_STORE_CTX_get0_cert(x509StoreContext);
+#endif
 
 		foreach(const QString &host, checkHosts)
 		{
