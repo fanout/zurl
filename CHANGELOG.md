@@ -1,6 +1,10 @@
 Zurl Changelog
 ==============
 
+v. 1.7.1 (2016-11-15)
+
+  * Fix compilation with OpenSSL 1.1.
+
 v. 1.7.0 (2016-10-27)
 
   * Fix crash when receiving message for session during close.
