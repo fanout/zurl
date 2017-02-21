@@ -461,7 +461,7 @@ cat >"$1/modules_new.cpp" <<EOT
     o = new qc_openssl(conf);
     o->required = false;
     o->disabled = false;
-    o = new qc_internal_pkgconfig(conf, "libcurl", "libcurl >= 7.20", VersionMin, "7.20");
+    o = new qc_internal_pkgconfig(conf, "libcurl", "libcurl >= 7.19", VersionMin, "7.19");
     o->required = true;
     o->disabled = false;
 

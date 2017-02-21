@@ -9,7 +9,7 @@
   <required/>
  </dep>
  <dep type='openssl'/>
- <dep type='pkg' name='libcurl' pkgname='libcurl' version='>=7.20'>
+ <dep type='pkg' name='libcurl' pkgname='libcurl' version='>=7.19'>
   <required/>
  </dep>
 </qconf>

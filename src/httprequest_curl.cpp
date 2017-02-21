@@ -136,7 +136,7 @@ public:
 #endif
 
 		curl_easy_setopt(easy, CURLOPT_BUFFERSIZE, (long)BUFFER_SIZE);
-		curl_easy_setopt(easy, CURLOPT_ACCEPT_ENCODING, "");
+		curl_easy_setopt(easy, CURLOPT_ENCODING, "");
 		curl_easy_setopt(easy, CURLOPT_HTTP_CONTENT_DECODING, 1L);
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
@@ -233,6 +233,7 @@ public:
 
 		if(!connectAddr.isNull())
 		{
+#if LIBCURL_VERSION_NUM >= 0x071400
 			curl_slist_free_all(dnsCache);
 
 			if(!connectHostToTrust.isEmpty())
@@ -241,6 +242,25 @@ public:
 			QByteArray cacheEntry = uri.host(QUrl::FullyEncoded).toUtf8() + ':' + QByteArray::number(uri.port()) + ':' + connectAddr.toString().toUtf8();
 			dnsCache = curl_slist_append(dnsCache, cacheEntry.data());
 			curl_easy_setopt(easy, CURLOPT_RESOLVE, dnsCache);
+#else
+			// for old versions of libcurl that don't support
+			//   hijacking DNS, we rewrite the URI to use the
+			//   resolved IP as the host, and override the Host
+			//   header with the host from the original URI. this
+			//   has two side-effects:
+			//
+			// 1. ssl cert verification won't work unless zurl is
+			//    compiled with openssl support.
+			// 2. if a custom Host header was provided, it will be
+			//    overwritten.
+
+			Q_UNUSED(connectHostToTrust);
+
+			headers.removeAll("Host");
+			headers += HttpHeader("Host", uri.host().toUtf8());
+
+			uri.setHost(connectAddr.toString());
+#endif
 		}
 
 		curl_easy_setopt(easy, CURLOPT_URL, uri.toEncoded().data());
