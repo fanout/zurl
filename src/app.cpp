@@ -544,12 +544,15 @@ public:
 			data = convertFromJsonStyle(data);
 		}
 
-		if(type == InInit)
-			log_debug("recv-init: %s", qPrintable(TnetString::variantToString(data, -1)));
-		else if(type == InStream)
-			log_debug("recv-stream: %s", qPrintable(TnetString::variantToString(data, -1)));
-		else // InReq
-			log_debug("recv-req: %s", qPrintable(TnetString::variantToString(data, -1)));
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+		{
+			if(type == InInit)
+				log_debug("recv-init: %s", qPrintable(TnetString::variantToString(data, -1)));
+			else if(type == InStream)
+				log_debug("recv-stream: %s", qPrintable(TnetString::variantToString(data, -1)));
+			else // InReq
+				log_debug("recv-req: %s", qPrintable(TnetString::variantToString(data, -1)));
+		}
 
 		QByteArray rid;
 
@@ -697,13 +700,15 @@ private slots:
 
 		if(!receiver.isEmpty())
 		{
-			log_debug("send: %s", qPrintable(TnetString::variantToString(response, -1)));
+			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+				log_debug("send: %s", qPrintable(TnetString::variantToString(response, -1)));
 
 			out_sock->write(QList<QByteArray>() << (receiver + ' ' + part));
 		}
 		else
 		{
-			log_debug("send-req: %s", qPrintable(TnetString::variantToString(response, -1)));
+			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+				log_debug("send-req: %s", qPrintable(TnetString::variantToString(response, -1)));
 
 			assert(reqHeadersByWorker.contains(w));
 			QList<QByteArray> reqHeaders = reqHeadersByWorker.value(w);
