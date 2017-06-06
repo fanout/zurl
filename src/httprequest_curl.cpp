@@ -163,7 +163,6 @@ public:
 
 		if(method == "OPTIONS")
 		{
-			assert(!expectBody);
 			curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, "OPTIONS");
 		}
 		else if(method == "HEAD")
@@ -949,13 +948,13 @@ public:
 		// we'd prefer not to send chunked encoding header if we don't
 		//   have to for certain methods, so wait and see if the user
 		//   actually tries to send a body before we start the request
-		if(willWriteBody && (method == "GET" || method == "DELETE"))
+		if(willWriteBody && (method == "OPTIONS" || method == "GET" || method == "DELETE"))
 			return;
 
 		// if the user might provide a body but we don't expect one
 		//   for the method type, then we'll wait and see what is
 		//   provided before starting the request.
-		if(willWriteBody && (method == "OPTIONS" || method == "HEAD"))
+		if(willWriteBody && method == "HEAD")
 		{
 			bodyNotAllowed = true;
 			return;
