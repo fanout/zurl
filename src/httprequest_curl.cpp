@@ -882,12 +882,9 @@ public:
 		timer->setSingleShot(true);
 	}
 
+	// NOTE: not DOR-SS
 	~CurlConnectionManagerManager()
 	{
-		timer->disconnect(this);
-		timer->setParent(0);
-		timer->deleteLater();
-
 		qDeleteAll(old);
 		delete current;
 
@@ -925,6 +922,7 @@ public:
 			{
 				old.remove(manager);
 				delete i;
+				log_debug("removed connection manager (old=%d)", old.count());
 			}
 		}
 	}
@@ -932,14 +930,14 @@ public:
 private slots:
 	void rotate()
 	{
-		log_debug("rotating current connection manager (%d old)", old.count());
-
 		if(current->refs > 0)
 			old.insert(current->manager, current);
 		else
 			delete current;
 
 		current = 0;
+
+		log_debug("rotated connection managers (old=%d)", old.count());
 	}
 };
 
