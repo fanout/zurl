@@ -35,6 +35,7 @@
 
 #define BUFFER_SIZE 200000
 #define REQUEST_BODY_BUFFER_MAX 1000000
+#define MANAGER_ROTATE_TIME (1000 * 60 * 60 * 2)
 
 // workaround for earlier curl versions
 #define UNPAUSE_WORKAROUND 1
@@ -649,6 +650,7 @@ public:
 	QHash<QSocketNotifier*, SocketInfo*> snMap;
 	QTimer *timer;
 	bool pendingUpdate;
+	QSet<CurlConnection*> connections;
 
 	CurlConnectionManager(QObject *parent = 0) :
 		QObject(parent),
@@ -659,7 +661,6 @@ public:
 		connect(timer, &QTimer::timeout, this, &CurlConnectionManager::timer_timeout);
 		timer->setSingleShot(true);
 
-		curl_global_init(CURL_GLOBAL_ALL);
 		multi = curl_multi_init();
 		curl_multi_setopt(multi, CURLMOPT_SOCKETFUNCTION, socketFunction_cb);
 		curl_multi_setopt(multi, CURLMOPT_SOCKETDATA, this);
@@ -669,8 +670,9 @@ public:
 
 	~CurlConnectionManager()
 	{
+		assert(connections.isEmpty());
+
 		curl_multi_cleanup(multi);
-		curl_global_cleanup();
 	}
 
 	void update()
@@ -842,7 +844,106 @@ public slots:
 	}
 };
 
-static CurlConnectionManager *g_man = 0;
+class CurlConnectionManagerManager : public QObject
+{
+	Q_OBJECT
+
+public:
+	class Item
+	{
+	public:
+		CurlConnectionManager *manager;
+		int refs;
+
+		Item() :
+			manager(0),
+			refs(0)
+		{
+		}
+
+		~Item()
+		{
+			delete manager;
+		}
+	};
+
+	Item *current;
+	QHash<CurlConnectionManager*, Item*> old;
+	QTimer *timer;
+
+	CurlConnectionManagerManager(QObject *parent = 0) :
+		QObject(parent),
+		current(0)
+	{
+		curl_global_init(CURL_GLOBAL_ALL);
+
+		timer = new QTimer(this);
+		connect(timer, &QTimer::timeout, this, &CurlConnectionManagerManager::rotate);
+		timer->setSingleShot(true);
+	}
+
+	~CurlConnectionManagerManager()
+	{
+		timer->disconnect(this);
+		timer->setParent(0);
+		timer->deleteLater();
+
+		qDeleteAll(old);
+		delete current;
+
+		curl_global_cleanup();
+	}
+
+	CurlConnectionManager *retainCurrent()
+	{
+		if(!current)
+		{
+			current = new Item;
+			current->manager = new CurlConnectionManager(this);
+			timer->start(MANAGER_ROTATE_TIME);
+		}
+
+		++(current->refs);
+
+		return current->manager;
+	}
+
+	void release(CurlConnectionManager *manager)
+	{
+		if(current && manager == current->manager)
+		{
+			assert(current->refs > 0);
+			--(current->refs);
+		}
+		else
+		{
+			Item *i = old.value(manager);
+			assert(i);
+			assert(i->refs > 0);
+			--(i->refs);
+			if(i->refs == 0)
+			{
+				old.remove(manager);
+				delete i;
+			}
+		}
+	}
+
+private slots:
+	void rotate()
+	{
+		log_debug("rotating current connection manager (%d old)", old.count());
+
+		if(current->refs > 0)
+			old.insert(current->manager, current);
+		else
+			delete current;
+
+		current = 0;
+	}
+};
+
+static CurlConnectionManagerManager *g_ccmm = 0;
 
 class HttpRequest::Private : public QObject
 {
@@ -867,7 +968,7 @@ public:
 	HttpRequest::ErrorCondition mostSignificantError;
 	bool ignoreBody;
 	CurlConnection *conn;
-	bool handleAdded;
+	CurlConnectionManager *manager;
 
 	Private(HttpRequest *_q, QJDnsShared *_dns) :
 		QObject(_q),
@@ -882,10 +983,10 @@ public:
 		mostSignificantError(HttpRequest::ErrorGeneric),
 		ignoreBody(false),
 		conn(0),
-		handleAdded(false)
+		manager(0)
 	{
-		if(!g_man)
-			g_man = new CurlConnectionManager(QCoreApplication::instance());
+		if(!g_ccmm)
+			g_ccmm = new CurlConnectionManagerManager(QCoreApplication::instance());
 
 		resolver = new AddressResolver(dns, this);
 		connect(resolver, &AddressResolver::resultsReady, this, &Private::resolver_resultsReady);
@@ -901,12 +1002,16 @@ public:
 	{
 		if(conn)
 		{
-			if(handleAdded)
-				curl_multi_remove_handle(g_man->multi, conn->easy);
+			if(manager)
+			{
+				curl_multi_remove_handle(manager->multi, conn->easy);
+				manager->connections -= conn;
+				g_ccmm->release(manager);
+				manager = 0;
+			}
 
 			delete conn;
 			conn = 0;
-			handleAdded = false;
 		}
 	}
 
@@ -990,7 +1095,7 @@ public:
 			log_debug("send unpausing");
 			conn->pauseBits &= ~CURLPAUSE_SEND;
 			curl_easy_pause(conn->easy, conn->pauseBits);
-			g_man->update();
+			manager->update();
 		}
 	}
 
@@ -1019,7 +1124,7 @@ public:
 			log_debug("send unpausing");
 			conn->pauseBits &= ~CURLPAUSE_SEND;
 			curl_easy_pause(conn->easy, conn->pauseBits);
-			g_man->update();
+			manager->update();
 		}
 	}
 
@@ -1036,7 +1141,7 @@ public:
 				log_debug("recv unpausing");
 				conn->pauseBits &= ~CURLPAUSE_RECV;
 				curl_easy_pause(conn->easy, conn->pauseBits);
-				g_man->update();
+				manager->update();
 			}
 
 			return out;
@@ -1121,11 +1226,12 @@ private slots:
 #endif
 		}
 
-		handleAdded = true;
-		curl_multi_add_handle(g_man->multi, conn->easy);
+		manager = g_ccmm->retainCurrent();
+		manager->connections += conn;
+		curl_multi_add_handle(manager->multi, conn->easy);
 
 		// kick the engine
-		g_man->doSocketAction(false, CURL_SOCKET_TIMEOUT, 0);
+		manager->doSocketAction(false, CURL_SOCKET_TIMEOUT, 0);
 	}
 
 	void resolver_resultsReady(const QList<QHostAddress> &results)
