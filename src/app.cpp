@@ -391,8 +391,8 @@ public:
 
 		dns = new QJDnsShared(QJDnsShared::UnicastInternet, this);
 
-		// uncomment this for packet level dns debugging
-		//dns->setDebug(dnsDebug, "U");
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			dns->setDebug(dnsDebug, "U");
 
 		dns->addInterface(QHostAddress::Any);
 		dns->addInterface(QHostAddress::AnyIPv6);
