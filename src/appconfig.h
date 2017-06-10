@@ -30,6 +30,7 @@ public:
 	int maxWorkers;
 	int sessionBufferSize;
 	int activityTimeout;
+	int persistentConnectionMaxTime;
 };
 
 #endif

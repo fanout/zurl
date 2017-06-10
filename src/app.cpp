@@ -38,6 +38,7 @@
 #include "processquit.h"
 #include "tnetstring.h"
 #include "zhttpresponsepacket.h"
+#include "httprequest.h"
 #include "appconfig.h"
 #include "log.h"
 #include "worker.h"
@@ -332,6 +333,7 @@ public:
 		config.maxWorkers = settings.value("max_open_requests", -1).toInt();
 		config.sessionBufferSize = settings.value("buffer_size", 200000).toInt();
 		config.activityTimeout = settings.value("timeout", 600).toInt();
+		config.persistentConnectionMaxTime = settings.value("connection_max_time", 60 * 60 * 2).toInt();
 		int inHwm = settings.value("in_hwm", 1000).toInt();
 		int outHwm = settings.value("out_hwm", 1000).toInt();
 
@@ -396,6 +398,8 @@ public:
 
 		dns->addInterface(QHostAddress::Any);
 		dns->addInterface(QHostAddress::AnyIPv6);
+
+		HttpRequest::setPersistentConnectionMaxTime(config.persistentConnectionMaxTime);
 
 		if(!in_spec.isEmpty())
 		{

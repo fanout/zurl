@@ -35,7 +35,6 @@
 
 #define BUFFER_SIZE 200000
 #define REQUEST_BODY_BUFFER_MAX 1000000
-#define MANAGER_ROTATE_TIME (1000 * 60 * 60 * 2)
 
 // workaround for earlier curl versions
 #define UNPAUSE_WORKAROUND 1
@@ -870,10 +869,12 @@ public:
 	Item *current;
 	QHash<CurlConnectionManager*, Item*> old;
 	QTimer *timer;
+	int persistentConnectionMaxTime;
 
 	CurlConnectionManagerManager(QObject *parent = 0) :
 		QObject(parent),
-		current(0)
+		current(0),
+		persistentConnectionMaxTime(-1)
 	{
 		curl_global_init(CURL_GLOBAL_ALL);
 
@@ -897,7 +898,9 @@ public:
 		{
 			current = new Item;
 			current->manager = new CurlConnectionManager(this);
-			timer->start(MANAGER_ROTATE_TIME);
+
+			if(persistentConnectionMaxTime > 0)
+				timer->start(persistentConnectionMaxTime * 1000);
 		}
 
 		++(current->refs);
@@ -927,6 +930,14 @@ public:
 		}
 	}
 
+	void setPersistentConnectionMaxTime(int secs)
+	{
+		persistentConnectionMaxTime = secs;
+
+		if(persistentConnectionMaxTime > 0 && current)
+			timer->start(persistentConnectionMaxTime * 1000);
+	}
+
 private slots:
 	void rotate()
 	{
@@ -941,7 +952,14 @@ private slots:
 	}
 };
 
-static CurlConnectionManagerManager *g_ccmm = 0;
+static CurlConnectionManagerManager *_g_ccmm = 0;
+
+static CurlConnectionManagerManager *g_ccmm()
+{
+	if(!_g_ccmm)
+		_g_ccmm = new CurlConnectionManagerManager(QCoreApplication::instance());
+	return _g_ccmm;
+}
 
 class HttpRequest::Private : public QObject
 {
@@ -983,9 +1001,6 @@ public:
 		conn(0),
 		manager(0)
 	{
-		if(!g_ccmm)
-			g_ccmm = new CurlConnectionManagerManager(QCoreApplication::instance());
-
 		resolver = new AddressResolver(dns, this);
 		connect(resolver, &AddressResolver::resultsReady, this, &Private::resolver_resultsReady);
 		connect(resolver, &AddressResolver::error, this, &Private::resolver_error);
@@ -1004,7 +1019,7 @@ public:
 			{
 				curl_multi_remove_handle(manager->multi, conn->easy);
 				manager->connections -= conn;
-				g_ccmm->release(manager);
+				g_ccmm()->release(manager);
 				manager = 0;
 			}
 
@@ -1224,7 +1239,7 @@ private slots:
 #endif
 		}
 
-		manager = g_ccmm->retainCurrent();
+		manager = g_ccmm()->retainCurrent();
 		manager->connections += conn;
 		curl_multi_add_handle(manager->multi, conn->easy);
 
@@ -1410,6 +1425,11 @@ HttpHeaders HttpRequest::responseHeaders() const
 QByteArray HttpRequest::readResponseBody(int size)
 {
 	return d->readResponseBody(size);
+}
+
+void HttpRequest::setPersistentConnectionMaxTime(int secs)
+{
+	g_ccmm()->setPersistentConnectionMaxTime(secs);
 }
 
 #include "httprequest_curl.moc"

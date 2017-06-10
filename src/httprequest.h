@@ -67,6 +67,8 @@ public:
 
 	QByteArray readResponseBody(int size = -1); // takes from the buffer
 
+	static void setPersistentConnectionMaxTime(int secs);
+
 signals:
 	void nextAddress(const QHostAddress &addr);
 	void readyRead();
