@@ -1,6 +1,14 @@
 Zurl Changelog
 ==============
 
+v. 1.8.0 (2017-06-25)
+
+  * Reconnect persistent connections after awhile (in case DNS changes).
+  * Option connection_max_time to control when connections are reconnected.
+  * Don't forbid request body on OPTIONS method.
+  * Include DNS logging in verbose output.
+  * Support libcurl 7.19.
+
 v. 1.7.1 (2016-11-15)
 
   * Fix compilation with OpenSSL 1.1.
