@@ -176,7 +176,7 @@ private slots:
 		sock.start(QString("http://nosuchhost:%1/").arg(server->localPort()));
 		waitForSignal(&spy);
 
-		QVERIFY(sock.errorCondition() == WebSocket::ErrorConnect);
+		QCOMPARE(sock.errorCondition(), WebSocket::ErrorConnect);
 	}
 
 	void handshakeConnectError()
@@ -186,7 +186,7 @@ private slots:
 		sock.start(QString("http://localhost:1/"));
 		waitForSignal(&spy);
 
-		QVERIFY(sock.errorCondition() == WebSocket::ErrorConnect);
+		QCOMPARE(sock.errorCondition(), WebSocket::ErrorConnect);
 	}
 
 	void handshakeSuccess()
