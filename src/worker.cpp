@@ -90,6 +90,7 @@ public:
 	QList<int> wsPendingWrites;
 	bool wsClosed;
 	bool wsPendingPeerClose;
+	bool quietLog;
 
 	Private(QJDnsShared *_dns, AppConfig *_config, Worker::Format _format, Worker *_q) :
 		QObject(_q),
@@ -209,6 +210,8 @@ public:
 		ignorePolicies = request.ignorePolicies;
 		sessionTimeout = -1;
 
+		quietLog = request.quiet;
+
 		if(request.uri.isEmpty())
 		{
 			log_warning("missing request uri");
@@ -250,6 +253,8 @@ public:
 
 		HttpHeaders headers = request.headers;
 
+		int infoLevel = quietLog ? LOG_LEVEL_DEBUG : LOG_LEVEL_INFO;
+
 		if(transport == HttpTransport)
 		{
 			// fire and forget
@@ -270,7 +275,7 @@ public:
 				return;
 			}
 
-			log_info("IN id=%s, %s %s", rid.data(), qPrintable(request.method), request.uri.toEncoded().data());
+			log(infoLevel, "IN id=%s, %s %s", rid.data(), qPrintable(request.method), request.uri.toEncoded().data());
 
 			// inbound streaming must start with sequence number of 0
 			if(mode == Worker::Stream && request.more && seq != 0)
@@ -336,7 +341,7 @@ public:
 		}
 		else // WebSocketTransport
 		{
-			log_info("IN id=%s, %s", rid.data(), request.uri.toEncoded().data());
+			log(infoLevel, "IN id=%s, %s", rid.data(), request.uri.toEncoded().data());
 
 			// inbound streaming must start with sequence number of 0
 			if(seq != 0)
@@ -666,16 +671,18 @@ public:
 
 		out.userData = userData;
 
+		int infoLevel = quietLog ? LOG_LEVEL_DEBUG : LOG_LEVEL_INFO;
+
 		// only log if error or body packet. this way we don't log cts or credits-only packets
 
 		if(out.type == ZhttpResponsePacket::Error)
 		{
-			log_info("OUT ERR id=%s condition=%s", outRid.data(), out.condition.data());
+			log(infoLevel, "OUT ERR id=%s condition=%s", outRid.data(), out.condition.data());
 		}
 		else if(out.type == ZhttpResponsePacket::Data)
 		{
 			if(resp.code != -1)
-				log_info("OUT id=%s code=%d %d%s", outRid.data(), out.code, out.body.size(), out.more ? " M" : "");
+				log(infoLevel, "OUT id=%s code=%d %d%s", outRid.data(), out.code, out.body.size(), out.more ? " M" : "");
 			else
 				log_debug("OUT id=%s %d%s", outRid.data(), out.body.size(), out.more ? " M" : "");
 		}
