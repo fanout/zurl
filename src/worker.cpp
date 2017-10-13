@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2014 Fanout, Inc.
+ * Copyright (C) 2012-2017 Fanout, Inc.
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -193,7 +193,13 @@ public:
 			return;
 		}
 
-		rid = request.id;
+		int seq = -1;
+		if(!request.ids.isEmpty())
+		{
+			rid = request.ids.first().id;
+			seq = request.ids.first().seq;
+		}
+
 		toAddress = request.from;
 		userData = request.userData;
 		sentHeader = false;
@@ -264,10 +270,10 @@ public:
 				return;
 			}
 
-			log_info("IN id=%s, %s %s", request.id.data(), qPrintable(request.method), request.uri.toEncoded().data());
+			log_info("IN id=%s, %s %s", rid.data(), qPrintable(request.method), request.uri.toEncoded().data());
 
 			// inbound streaming must start with sequence number of 0
-			if(mode == Worker::Stream && request.more && request.seq != 0)
+			if(mode == Worker::Stream && request.more && seq != 0)
 			{
 				log_warning("streamed input must start with seq 0");
 
@@ -286,7 +292,7 @@ public:
 
 			bodySent = false;
 
-			inSeq = request.seq;
+			inSeq = seq;
 
 			if(!isAllowed(request.uri.host()) || (!request.connectHost.isEmpty() && !isAllowed(request.connectHost)))
 			{
@@ -330,10 +336,10 @@ public:
 		}
 		else // WebSocketTransport
 		{
-			log_info("IN id=%s, %s", request.id.data(), request.uri.toEncoded().data());
+			log_info("IN id=%s, %s", rid.data(), request.uri.toEncoded().data());
 
 			// inbound streaming must start with sequence number of 0
-			if(request.seq != 0)
+			if(seq != 0)
 			{
 				log_warning("websocket input must start with seq 0");
 
@@ -349,7 +355,7 @@ public:
 				return;
 			}
 
-			inSeq = request.seq;
+			inSeq = seq;
 
 			if(!isAllowed(request.uri.host()) || (!request.connectHost.isEmpty() && !isAllowed(request.connectHost)))
 			{
@@ -483,8 +489,12 @@ public:
 			return;
 		}
 
+		int seq = -1;
+		if(!request.ids.isEmpty())
+			seq = request.ids.first().seq;
+
 		// cancel session if a wrong sequenced packet is received
-		if(inSeq == -1 || request.seq == -1 || request.seq != inSeq + 1)
+		if(inSeq == -1 || seq == -1 || seq != inSeq + 1)
 		{
 			if(request.type != ZhttpRequestPacket::Cancel)
 				deferCancel();
@@ -500,7 +510,7 @@ public:
 			return;
 		}
 
-		inSeq = request.seq;
+		inSeq = seq;
 
 		refreshTimeout();
 
@@ -641,25 +651,33 @@ public:
 	void writeResponse(const ZhttpResponsePacket &resp)
 	{
 		ZhttpResponsePacket out = resp;
+
 		if(!toAddress.isEmpty())
 			out.from = config->clientId;
+
+		QByteArray outRid;
 		if(!rid.isEmpty())
-			out.id = rid;
-		out.seq = outSeq++;
+		{
+			out.ids.clear();
+			out.ids += ZhttpResponsePacket::Id(rid, outSeq++);
+
+			outRid = rid;
+		}
+
 		out.userData = userData;
 
 		// only log if error or body packet. this way we don't log cts or credits-only packets
 
 		if(out.type == ZhttpResponsePacket::Error)
 		{
-			log_info("OUT ERR id=%s condition=%s", out.id.data(), out.condition.data());
+			log_info("OUT ERR id=%s condition=%s", outRid.data(), out.condition.data());
 		}
 		else if(out.type == ZhttpResponsePacket::Data)
 		{
 			if(resp.code != -1)
-				log_info("OUT id=%s code=%d %d%s", out.id.data(), out.code, out.body.size(), out.more ? " M" : "");
+				log_info("OUT id=%s code=%d %d%s", outRid.data(), out.code, out.body.size(), out.more ? " M" : "");
 			else
-				log_debug("OUT id=%s %d%s", out.id.data(), out.body.size(), out.more ? " M" : "");
+				log_debug("OUT id=%s %d%s", outRid.data(), out.body.size(), out.more ? " M" : "");
 		}
 
 		if(!quiet)

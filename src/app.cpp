@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2012-2017 Fanout, Inc.
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -625,7 +625,7 @@ public:
 	void respondCancel(const QByteArray &receiver, const QByteArray &rid)
 	{
 		ZhttpResponsePacket out;
-		out.id = rid;
+		out.ids += ZhttpResponsePacket::Id(rid);
 		out.type = ZhttpResponsePacket::Cancel;
 		QByteArray part = QByteArray("T") + TnetString::fromVariant(out.toVariant());
 		out_sock->write(QList<QByteArray>() << (receiver + ' ' + part));
