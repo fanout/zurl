@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2012-2017 Fanout, Inc.
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,6 +22,8 @@
 
 class QVariant;
 class QJDnsShared;
+class ZhttpRequestPacket;
+class ZhttpResponsePacket;
 class AppConfig;
 
 class Worker : public QObject
@@ -47,11 +49,11 @@ public:
 	QByteArray rid() const;
 	Format format() const;
 
-	void start(const QVariant &request, Mode mode);
-	void write(const QVariant &request);
+	void start(const QByteArray &id, int seq, const ZhttpRequestPacket &request, Mode mode);
+	void write(int seq, const ZhttpRequestPacket &request);
 
 signals:
-	void readyRead(const QByteArray &receiver, const QVariant &response);
+	void readyRead(const QByteArray &receiver, const ZhttpResponsePacket &response);
 	void finished();
 
 private:

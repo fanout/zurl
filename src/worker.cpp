@@ -90,6 +90,7 @@ public:
 	QList<int> wsPendingWrites;
 	bool wsClosed;
 	bool wsPendingPeerClose;
+	bool multi;
 	bool quietLog;
 
 	Private(QJDnsShared *_dns, AppConfig *_config, Worker::Format _format, Worker *_q) :
@@ -108,7 +109,9 @@ public:
 		lastReceivedFrameType(WebSocket::Frame::Text),
 		wsSendingMessage(false),
 		wsClosed(false),
-		wsPendingPeerClose(false)
+		wsPendingPeerClose(false),
+		multi(false),
+		quietLog(false)
 	{
 		updateTimer = new QTimer(this);
 		connect(updateTimer, &QTimer::timeout, this, &Private::doUpdate);
@@ -169,7 +172,7 @@ public:
 		state = Stopped;
 	}
 
-	void start(const QVariant &vrequest, Mode mode)
+	void start(const QByteArray &id, int seq, const ZhttpRequestPacket &request, Mode mode)
 	{
 		outSeq = 0;
 		outCredits = 0;
@@ -177,29 +180,7 @@ public:
 
 		state = Started;
 
-		ZhttpRequestPacket request;
-		if(!request.fromVariant(vrequest))
-		{
-			log_warning("failed to parse zurl request");
-
-			QVariantHash vhash = vrequest.toHash();
-			rid = vhash.value("id").toByteArray();
-			toAddress = vhash.value("from").toByteArray();
-			QByteArray type = vhash.value("type").toByteArray();
-			if(!toAddress.isEmpty() && type != "error" && type != "cancel")
-				deferError("bad-request");
-			else
-				deferFinished();
-
-			return;
-		}
-
-		int seq = -1;
-		if(!request.ids.isEmpty())
-		{
-			rid = request.ids.first().id;
-			seq = request.ids.first().seq;
-		}
+		rid = id;
 
 		toAddress = request.from;
 		userData = request.userData;
@@ -210,6 +191,7 @@ public:
 		ignorePolicies = request.ignorePolicies;
 		sessionTimeout = -1;
 
+		multi = request.multi;
 		quietLog = request.quiet;
 
 		if(request.uri.isEmpty())
@@ -220,7 +202,9 @@ public:
 			return;
 		}
 
-		QString scheme = request.uri.scheme();
+		QUrl uri = request.uri;
+
+		QString scheme = uri.scheme();
 		if(scheme == "https" || scheme == "http")
 		{
 			transport = HttpTransport;
@@ -275,7 +259,7 @@ public:
 				return;
 			}
 
-			log(infoLevel, "IN id=%s, %s %s", rid.data(), qPrintable(request.method), request.uri.toEncoded().data());
+			log(infoLevel, "IN id=%s, %s %s", rid.data(), qPrintable(request.method), uri.toEncoded().data());
 
 			// inbound streaming must start with sequence number of 0
 			if(mode == Worker::Stream && request.more && seq != 0)
@@ -299,15 +283,15 @@ public:
 
 			inSeq = seq;
 
-			if(!isAllowed(request.uri.host()) || (!request.connectHost.isEmpty() && !isAllowed(request.connectHost)))
+			if(!isAllowed(uri.host()) || (!request.connectHost.isEmpty() && !isAllowed(request.connectHost)))
 			{
 				deferError("policy-violation");
 				return;
 			}
 
-			QByteArray hostHeader = request.uri.host().toUtf8();
+			QByteArray hostHeader = uri.host().toUtf8();
 
-			int port = request.uri.port(defaultPort);
+			int port = uri.port(defaultPort);
 			if(port != defaultPort)
 				hostHeader += ':' + QByteArray::number(port);
 
@@ -329,7 +313,7 @@ public:
 			if(!request.connectHost.isEmpty())
 				hreq->setConnectHost(request.connectHost);
 			if(request.connectPort != -1)
-				request.uri.setPort(request.connectPort);
+				uri.setPort(request.connectPort);
 
 			hreq->setTrustConnectHost(request.trustConnectHost);
 			hreq->setIgnoreTlsErrors(request.ignoreTlsErrors);
@@ -341,7 +325,7 @@ public:
 		}
 		else // WebSocketTransport
 		{
-			log(infoLevel, "IN id=%s, %s", rid.data(), request.uri.toEncoded().data());
+			log(infoLevel, "IN id=%s, %s", rid.data(), uri.toEncoded().data());
 
 			// inbound streaming must start with sequence number of 0
 			if(seq != 0)
@@ -362,15 +346,15 @@ public:
 
 			inSeq = seq;
 
-			if(!isAllowed(request.uri.host()) || (!request.connectHost.isEmpty() && !isAllowed(request.connectHost)))
+			if(!isAllowed(uri.host()) || (!request.connectHost.isEmpty() && !isAllowed(request.connectHost)))
 			{
 				deferError("policy-violation");
 				return;
 			}
 
-			QByteArray hostHeader = request.uri.host().toUtf8();
+			QByteArray hostHeader = uri.host().toUtf8();
 
-			int port = request.uri.port(defaultPort);
+			int port = uri.port(defaultPort);
 			if(port != defaultPort)
 				hostHeader += ":" + QByteArray::number(port);
 
@@ -392,7 +376,7 @@ public:
 			if(!request.connectHost.isEmpty())
 				ws->setConnectHost(request.connectHost);
 			if(request.connectPort != -1)
-				request.uri.setPort(request.connectPort);
+				uri.setPort(request.connectPort);
 
 			ws->setTrustConnectHost(request.trustConnectHost);
 			ws->setIgnoreTlsErrors(request.ignoreTlsErrors);
@@ -436,7 +420,7 @@ public:
 
 			bool hasOrMightHaveBody = (!request.body.isEmpty() || request.more);
 
-			hreq->start(request.method, request.uri, headers, hasOrMightHaveBody);
+			hreq->start(request.method, uri, headers, hasOrMightHaveBody);
 
 			if(hasOrMightHaveBody)
 			{
@@ -460,6 +444,7 @@ public:
 					ZhttpResponsePacket resp;
 					resp.type = ZhttpResponsePacket::Credit;
 					resp.credits = config->sessionBufferSize;
+					resp.multi = multi;
 					writeResponse(resp);
 				}
 				else
@@ -467,36 +452,21 @@ public:
 					// send ack
 					ZhttpResponsePacket resp;
 					resp.type = ZhttpResponsePacket::KeepAlive;
+					resp.multi = multi;
 					writeResponse(resp);
 				}
 			}
 		}
 		else // WebSocketTransport
 		{
-			ws->start(request.uri, headers);
+			ws->start(uri, headers);
 		}
 	}
 
-	void write(const QVariant &vrequest)
+	void write(int seq, const ZhttpRequestPacket &request)
 	{
 		if(!(state == Started || state == Closing || state == PeerClosing))
 			return;
-
-		ZhttpRequestPacket request;
-		if(!request.fromVariant(vrequest))
-		{
-			QVariantHash vhash = vrequest.toHash();
-			if(vhash["type"].toByteArray() != "cancel")
-				deferError("bad-request");
-			else
-				deferFinished();
-
-			return;
-		}
-
-		int seq = -1;
-		if(!request.ids.isEmpty())
-			seq = request.ids.first().seq;
 
 		// cancel session if a wrong sequenced packet is received
 		if(inSeq == -1 || seq == -1 || seq != inSeq + 1)
@@ -688,7 +658,7 @@ public:
 		}
 
 		if(!quiet)
-			emit q->readyRead(toAddress, out.toVariant());
+			emit q->readyRead(toAddress, out);
 	}
 
 	void update()
@@ -1046,6 +1016,7 @@ private slots:
 		resp.reason = ws->responseReason();
 		resp.headers = ws->responseHeaders();
 		resp.credits = config->sessionBufferSize;
+		resp.multi = multi;
 		writeResponse(resp);
 	}
 
@@ -1174,14 +1145,14 @@ Worker::Format Worker::format() const
 	return d->format;
 }
 
-void Worker::start(const QVariant &request, Mode mode)
+void Worker::start(const QByteArray &id, int seq, const ZhttpRequestPacket &request, Mode mode)
 {
-	d->start(request, mode);
+	d->start(id, seq, request, mode);
 }
 
-void Worker::write(const QVariant &request)
+void Worker::write(int seq, const ZhttpRequestPacket &request)
 {
-	d->write(request);
+	d->write(seq, request);
 }
 
 #include "worker.moc"

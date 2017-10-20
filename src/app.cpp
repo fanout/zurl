@@ -37,6 +37,7 @@
 #include "qzmqvalve.h"
 #include "processquit.h"
 #include "tnetstring.h"
+#include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
 #include "httprequest.h"
 #include "appconfig.h"
@@ -558,43 +559,64 @@ public:
 				log_debug("recv-req: %s", qPrintable(TnetString::variantToString(data, -1)));
 		}
 
-		QByteArray rid;
-
-		if(type == InInit || type == InStream)
+		ZhttpRequestPacket p;
+		if(!p.fromVariant(data))
 		{
-			// try to get the id
-			QVariantHash vhash = data.toHash();
-			rid = vhash.value("id").toByteArray();
+			log_warning("received message with invalid format (parse failed), skipping");
 
-			if(type == InStream)
+			if((p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel) && !p.from.isEmpty() && !p.ids.isEmpty())
 			{
-				// instream interface requires ids on packets
-				if(rid.isEmpty())
-				{
-					log_warning("received stream message without request id, skipping");
-					return;
-				}
+				respondError(p.from, p.ids.first().id, "bad-request");
+			}
 
-				Worker *w = streamWorkersByRid.value(rid);
+			return;
+		}
+
+		if(type == InStream)
+		{
+			if(p.ids.isEmpty())
+			{
+				log_warning("received stream message without request id, skipping");
+				return;
+			}
+
+			foreach(const ZhttpRequestPacket::Id &id, p.ids)
+			{
+				Worker *w = streamWorkersByRid.value(id.id);
 				if(!w)
 				{
-					QByteArray from = vhash.value("from").toByteArray();
-					QByteArray type = vhash.value("type").toByteArray();
-					if(!from.isEmpty() && type != "error" && type != "cancel")
-						respondCancel(from, rid);
+					if((p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel) && !p.from.isEmpty() && !p.ids.isEmpty())
+					{
+						respondCancel(p.from, id.id);
+					}
 
-					return;
+					continue;
 				}
 
-				w->write(data);
-				return;
+				w->write(id.seq, p);
 			}
 
-			if(!rid.isEmpty() && streamWorkersByRid.contains(rid))
-			{
-				log_warning("received request for id already in use, skipping");
-				return;
-			}
+			return;
+		}
+
+		if(p.ids.count() > 1)
+		{
+			log_warning("received initial message with multiple ids, skipping");
+			return;
+		}
+
+		if(!p.ids.isEmpty() && streamWorkersByRid.contains(p.ids.first().id))
+		{
+			log_warning("received request for id already in use, skipping");
+			return;
+		}
+
+		QByteArray rid;
+		int seq = -1;
+		if(!p.ids.isEmpty())
+		{
+			rid = p.ids.first().id;
+			seq = p.ids.first().seq;
 		}
 
 		Worker *w = new Worker(dns, &config, format, this);
@@ -617,16 +639,27 @@ public:
 				in_req_valve->close();
 		}
 
-		w->start(data, (type == InInit ? Worker::Stream : Worker::Single));
+		w->start(rid, seq, p, (type == InInit ? Worker::Stream : Worker::Single));
 	}
 
 	// normally responses are handled by Workers, but in some routing
 	//   cases we need to be able to respond with an error at this layer
+
 	void respondCancel(const QByteArray &receiver, const QByteArray &rid)
 	{
 		ZhttpResponsePacket out;
 		out.ids += ZhttpResponsePacket::Id(rid);
 		out.type = ZhttpResponsePacket::Cancel;
+		QByteArray part = QByteArray("T") + TnetString::fromVariant(out.toVariant());
+		out_sock->write(QList<QByteArray>() << (receiver + ' ' + part));
+	}
+
+	void respondError(const QByteArray &receiver, const QByteArray &rid, const QByteArray &condition)
+	{
+		ZhttpResponsePacket out;
+		out.ids += ZhttpResponsePacket::Id(rid);
+		out.type = ZhttpResponsePacket::Error;
+		out.condition = condition;
 		QByteArray part = QByteArray("T") + TnetString::fromVariant(out.toVariant());
 		out_sock->write(QList<QByteArray>() << (receiver + ' ' + part));
 	}
@@ -681,19 +714,21 @@ private slots:
 		handleIncoming(InReq, reqMessage.content()[0], reqMessage.headers());
 	}
 
-	void worker_readyRead(const QByteArray &receiver, const QVariant &response)
+	void worker_readyRead(const QByteArray &receiver, const ZhttpResponsePacket &response)
 	{
 		Worker *w = (Worker *)sender();
+
+		QVariant vresponse = response.toVariant();
 
 		QByteArray part;
 		Worker::Format format = w->format();
 		if(format == Worker::TnetStringFormat)
 		{
-			part = QByteArray("T") + TnetString::fromVariant(response);
+			part = QByteArray("T") + TnetString::fromVariant(vresponse);
 		}
 		else // JsonFormat
 		{
-			QVariant data = convertToJsonStyle(response);
+			QVariant data = convertToJsonStyle(vresponse);
 			QJsonDocument doc;
 			if(data.type() == QVariant::Map)
 				doc = QJsonDocument(QJsonObject::fromVariantMap(data.toMap()));
@@ -705,14 +740,14 @@ private slots:
 		if(!receiver.isEmpty())
 		{
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-				log_debug("send: %s", qPrintable(TnetString::variantToString(response, -1)));
+				log_debug("send: %s", qPrintable(TnetString::variantToString(vresponse, -1)));
 
 			out_sock->write(QList<QByteArray>() << (receiver + ' ' + part));
 		}
 		else
 		{
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-				log_debug("send-req: %s", qPrintable(TnetString::variantToString(response, -1)));
+				log_debug("send-req: %s", qPrintable(TnetString::variantToString(vresponse, -1)));
 
 			assert(reqHeadersByWorker.contains(w));
 			QList<QByteArray> reqHeaders = reqHeadersByWorker.value(w);
