@@ -1,6 +1,11 @@
 Zurl Changelog
 ==============
 
+v. 1.9.0 (2017-11-06)
+
+  * Support receiving multi-address packets.
+  * Quiet mode, to log requests in debug level rather than info level.
+
 v. 1.8.0 (2017-06-25)
 
   * Reconnect persistent connections after awhile (in case DNS changes).
