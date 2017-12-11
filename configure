@@ -152,7 +152,7 @@ while [ $# -gt 0 ]; do
 			shift
 			;;
 		--help) show_usage; exit ;;
-		*) show_usage; exit 1;;
+		*) echo "configure: WARNING: unrecognized options: $1" >&2; shift; ;;
 	esac
 done
 
@@ -174,7 +174,7 @@ fi
 printf "Verifying Qt build environment ... "
 
 if [ -z "$QC_QTSELECT" ]; then
-	QC_QTSELECT="$QT_SELECT"
+	QC_QTSELECT="$(echo $QT_SELECT | tr -d "qt")"
 fi
 
 if [ ! -z "$QC_QTSELECT" ]; then
@@ -192,7 +192,7 @@ qmake_check() {
 		fi
 		vout=`/bin/sh -c "$cmd" 2>&1`
 		case "${vout}" in
-			?.?.?)
+			*.*.*)
 				vmaj="${vout%%.*}"
 				if [ ! -z "$QC_QTSELECT" ]; then
 					if [ "$vmaj" = "$QC_QTSELECT" ]; then
@@ -598,6 +598,12 @@ preserved.
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <limits.h>
+#ifndef PATH_MAX
+# ifdef Q_OS_WIN
+#  define PATH_MAX 260
+# endif
+#endif
 
 class MocTestObject : public QObject
 {
@@ -773,7 +779,9 @@ QStringList qc_splitflags(const QString &flags)
 	bool escaped = false;
 	QChar quote, backslash = QLatin1Char('\\\\');
 	QString buf;
+#ifdef PATH_MAX
 	buf.reserve(PATH_MAX);
+#endif
 	for (int i=0; i < flags.length(); i++) {
 		if (searchStart && flags[i].isSpace()) {
 			continue;
@@ -1011,6 +1019,10 @@ public:
 			conf->addLib(libs);
 		//if(!other.isEmpty())
 		//	conf->addExtra(QString("QMAKE_CFLAGS += %1\\n").arg(other));
+
+		if(!required)
+			conf->addDefine("HAVE_PKG_" + qc_escapeArg(pkgname).toUpper());
+
 		return true;
 	}
 };
@@ -1584,6 +1596,7 @@ int main(int argc, char ** argv)
 
 		QString str;
 		str += "# qconf\\n\\n";
+		str += "greaterThan(QT_MAJOR_VERSION, 4):CONFIG += c++11\\n";
 
 		QString var;
 		var = qc_normalize_path(qc_getenv("PREFIX"));
@@ -1663,6 +1676,8 @@ SOURCES += conf4.cpp
 
 
 DEFINES += HAVE_MODULES
+
+greaterThan(QT_MAJOR_VERSION, 4):CONFIG += c++11
 
 EOT
 }
