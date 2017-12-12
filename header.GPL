@@ -1,9 +1,3 @@
-/*
- * Copyright (C) 2012-2013 Fanout, Inc.
- *
- * This file is part of Zurl.
- *
- * $FANOUT_BEGIN_LICENSE:GPL$
  *
  * Zurl is free software: you can redistribute it and/or modify it under the
  * terms of the GNU General Public License as published by the Free Software
@@ -23,31 +17,3 @@
  * software or contained in a written agreement between you and Fanout. For
  * further information use the contact form at <https://fanout.io/enterprise/>.
  *
- * $FANOUT_END_LICENSE$
- */
-
-#ifndef APP_H
-#define APP_H
-
-#include <QObject>
-
-class App : public QObject
-{
-	Q_OBJECT
-
-public:
-	App(QObject *parent = 0);
-	~App();
-
-	void start();
-
-signals:
-	void quit();
-
-private:
-	class Private;
-	friend class Private;
-	Private *d;
-};
-
-#endif
