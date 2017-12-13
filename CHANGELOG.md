@@ -1,6 +1,10 @@
 Zurl Changelog
 ==============
 
+v. 1.9.1 (2017-12-12)
+
+  * Fix compilation with Qt 5.10.
+
 v. 1.9.0 (2017-11-06)
 
   * Support receiving multi-address packets.
