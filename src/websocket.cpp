@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2014-2018 Fanout, Inc.
  * 
  * This file is part of Zurl.
  *
@@ -351,6 +351,7 @@ public:
 	bool chunked;
 	bool peerClosing;
 	int peerCloseCode;
+	QString peerCloseReason;
 	QList<QHostAddress> addrs;
 	ErrorCondition errorCondition;
 	ErrorCondition mostSignificantError;
@@ -423,6 +424,7 @@ public:
 		chunked = false;
 		peerClosing = false;
 		peerCloseCode = -1;
+		peerCloseReason.clear();
 		errorCondition = ErrorNone;
 		mostSignificantError = ErrorGeneric;
 		inbuf.clear();
@@ -483,7 +485,7 @@ public:
 		return f;
 	}
 
-	void close(int code)
+	void close(int code, const QString &reason)
 	{
 		log_debug("ws: closing");
 
@@ -492,8 +494,11 @@ public:
 		QByteArray buf;
 		if(code != -1)
 		{
-			QByteArray data(2, 0);
+			QByteArray rawReason = reason.toUtf8();
+
+			QByteArray data(2 + rawReason.size(), 0);
 			write16((quint8 *)data.data(), code);
+			memcpy(data.data() + 2, rawReason.data(), rawReason.size());
 			buf = createFrame(true, 8, data, generateMask());
 		}
 		else
@@ -688,10 +693,11 @@ public:
 		{
 			peerClosing = true;
 
-			if(data.count() == 2)
+			if(data.count() >= 2)
 			{
 				peerCloseCode = read16((const quint8 *)data.data());
-				log_debug("ws: received peer close: %d", peerCloseCode);
+				peerCloseReason = QString::fromUtf8(data.mid(2));
+				log_debug("ws: received peer close: %d [%s]", peerCloseCode, qPrintable(peerCloseReason));
 			}
 			else
 				log_debug("ws: received peer close");
@@ -1219,6 +1225,11 @@ int WebSocket::peerCloseCode() const
 	return d->peerCloseCode;
 }
 
+QString WebSocket::peerCloseReason() const
+{
+	return d->peerCloseReason;
+}
+
 WebSocket::ErrorCondition WebSocket::errorCondition() const
 {
 	return d->errorCondition;
@@ -1239,9 +1250,9 @@ WebSocket::Frame WebSocket::readFrame()
 	return d->readFrame();
 }
 
-void WebSocket::close(int code)
+void WebSocket::close(int code, const QString &reason)
 {
-	d->close(code);
+	d->close(code, reason);
 }
 
 #include "websocket.moc"

@@ -103,6 +103,7 @@ public:
 	int framesAvailable() const;
 	int nextFrameSize() const;
 	int peerCloseCode() const;
+	QString peerCloseReason() const;
 	ErrorCondition errorCondition() const;
 
 	// for rejections
@@ -110,7 +111,7 @@ public:
 
 	void writeFrame(const Frame &frame);
 	Frame readFrame();
-	void close(int code = -1);
+	void close(int code = -1, const QString &reason = QString());
 
 signals:
 	void nextAddress(const QHostAddress &addr);

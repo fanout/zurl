@@ -570,7 +570,7 @@ public:
 				}
 				else if(request.type == ZhttpRequestPacket::Close)
 				{
-					ws->close(request.code);
+					ws->close(request.code, QString::fromUtf8(request.body));
 
 					wsClosed = true;
 
@@ -908,6 +908,7 @@ private slots:
 					ZhttpResponsePacket resp;
 					resp.type = ZhttpResponsePacket::Close;
 					resp.code = ws->peerCloseCode();
+					resp.body = ws->peerCloseReason().toUtf8();
 					writeResponse(resp);
 					if(!self)
 						return;
