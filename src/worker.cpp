@@ -849,7 +849,7 @@ private slots:
 		}
 		else // WebSocketTransport
 		{
-			if(state == Started || state || Closing || state == PeerClosing)
+			if(state == Started || state == Closing || state == PeerClosing)
 			{
 				if(stuffToRead)
 				{
