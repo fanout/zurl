@@ -17,3 +17,5 @@ moc_*
 /tests/Makefile
 /tests/*test/Makefile
 /tests/*test/*test
+/tests/*test/target_wrapper.sh
+.qmake.stash
