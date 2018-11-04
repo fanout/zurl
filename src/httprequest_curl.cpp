@@ -1284,7 +1284,6 @@ private slots:
 				case CURLE_COULDNT_CONNECT:
 					curError = HttpRequest::ErrorConnect;
 					break;
-				case CURLE_SSL_CACERT:
 				case CURLE_PEER_FAILED_VERIFICATION:
 					curError = HttpRequest::ErrorTls;
 					break;
