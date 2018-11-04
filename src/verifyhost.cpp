@@ -318,7 +318,11 @@ CURLcode verifyhost(const char *host, X509 *server_cert)
       /* only check alternatives of the same type the target is */
       if(check->type == target) {
         /* get data and length */
-        const char *altptr = (char *)ASN1_STRING_data(check->d.ia5);
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+        const char *altptr = (const char *)ASN1_STRING_data(check->d.ia5);
+#else
+        const char *altptr = (const char *)ASN1_STRING_get0_data(check->d.ia5);
+#endif
         size_t altlen = (size_t) ASN1_STRING_length(check->d.ia5);
 
         switch(target) {
@@ -409,7 +413,11 @@ CURLcode verifyhost(const char *host, X509 *server_cert)
           if(j >= 0) {
             peer_CN = (unsigned char *)OPENSSL_malloc(j+1);
             if(peer_CN) {
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
               memcpy(peer_CN, ASN1_STRING_data(tmp), j);
+#else
+              memcpy(peer_CN, ASN1_STRING_get0_data(tmp), j);
+#endif
               peer_CN[j] = '\0';
             }
           }
