@@ -31,25 +31,14 @@ INCLUDEPATH += $$SRC_DIR
 
 HEADERS += \
 	$$SRC_DIR/addressresolver.h \
+	$$SRC_DIR/verifyhost.h \
 	$$SRC_DIR/httprequest.h \
 	$$SRC_DIR/websocket.h
 
 SOURCES += \
-	$$SRC_DIR/addressresolver.cpp
-
-use_curl {
-	DEFINES += USE_CURL
-	HEADERS += \
-		$$SRC_DIR/verifyhost.h
-	SOURCES += \
-		$$SRC_DIR/httprequest_curl.cpp \
-		$$SRC_DIR/verifyhost.cpp
-} else {
-	DEFINES += USE_QNAM
-	SOURCES += $$SRC_DIR/httprequest_qnam.cpp
-}
-
-SOURCES += \
+	$$SRC_DIR/addressresolver.cpp \
+	$$SRC_DIR/verifyhost.cpp \
+	$$SRC_DIR/httprequest.cpp \
 	$$SRC_DIR/websocket.cpp
 
 HEADERS += \

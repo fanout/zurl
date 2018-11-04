@@ -1442,4 +1442,4 @@ void HttpRequest::setPersistentConnectionMaxTime(int secs)
 	g_ccmm()->setPersistentConnectionMaxTime(secs);
 }
 
-#include "httprequest_curl.moc"
+#include "httprequest.moc"
