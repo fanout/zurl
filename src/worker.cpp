@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017 Fanout, Inc.
+ * Copyright (C) 2012-2018 Fanout, Inc.
  * 
  * This file is part of Zurl.
  *
@@ -312,7 +312,7 @@ public:
 				headers += HttpHeader("Host", hostHeader);
 			}
 
-			hreq = new HttpRequest(dns, this);
+			hreq = new HttpRequest(this);
 			connect(hreq, &HttpRequest::nextAddress, this, &Private::req_nextAddress);
 			connect(hreq, &HttpRequest::readyRead, this, &Private::req_readyRead);
 			connect(hreq, &HttpRequest::bytesWritten, this, &Private::req_bytesWritten);
@@ -322,9 +322,7 @@ public:
 			sessionTimeout = request.timeout;
 
 			if(!request.connectHost.isEmpty())
-				hreq->setConnectHost(request.connectHost);
-			if(request.connectPort != -1)
-				uri.setPort(request.connectPort);
+				hreq->setConnectHostPort(request.connectHost, request.connectPort);
 
 			hreq->setTrustConnectHost(request.trustConnectHost);
 			hreq->setIgnoreTlsErrors(request.ignoreTlsErrors);
@@ -376,7 +374,7 @@ public:
 			}
 
 			ws = new WebSocket(dns, this);
-			connect(ws, &WebSocket::nextAddress, this, &Private::req_nextAddress);
+			connect(ws, &WebSocket::nextAddress, this, &Private::ws_nextAddress);
 			connect(ws, &WebSocket::connected, this, &Private::ws_connected);
 			connect(ws, &WebSocket::readyRead, this, &Private::ws_readyRead);
 			connect(ws, &WebSocket::framesWritten, this, &Private::ws_framesWritten);
@@ -942,7 +940,7 @@ private slots:
 	void req_nextAddress(const QHostAddress &addr)
 	{
 		if(!isAllowed(addr.toString()))
-			respondError("policy-violation");
+			hreq->blockAddress();
 	}
 
 	void req_readyRead()
@@ -1016,6 +1014,12 @@ private slots:
 		}
 
 		respondError(condition);
+	}
+
+	void ws_nextAddress(const QHostAddress &addr)
+	{
+		if(!isAllowed(addr.toString()))
+			respondError("policy-violation");
 	}
 
 	void ws_connected()

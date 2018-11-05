@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2015 Fanout, Inc.
+ * Copyright (C) 2013-2018 Fanout, Inc.
  *
  * This file is part of Zurl.
  *
@@ -31,7 +31,6 @@
 #include <QTcpServer>
 #include <QtTest/QtTest>
 #include "log.h"
-#include "qjdnsshared.h"
 #include "httpheaders.h"
 #include "httprequest.h"
 
@@ -184,42 +183,12 @@ private slots:
 	}
 };
 
-class DnsDebug : public QObject
-{
-	Q_OBJECT
-
-private:
-	QJDnsSharedDebug *dnsDebug_;
-
-public:
-	DnsDebug(QObject *parent = 0) :
-		QObject(parent)
-	{
-		dnsDebug_ = new QJDnsSharedDebug(this);
-		connect(dnsDebug_, &QJDnsSharedDebug::readyRead, this, &DnsDebug::flush);
-	}
-
-	void applyTo(QJDnsShared *dns)
-	{
-		dns->setDebug(dnsDebug_, "U");
-	}
-
-public slots:
-	void flush()
-	{
-		foreach(const QString &line, dnsDebug_->readDebugLines())
-			log_debug("%s", qPrintable(line));
-	}
-};
-
 class HttpRequestTest : public QObject
 {
 	Q_OBJECT
 
 private:
 	HttpServer *server;
-	DnsDebug *dnsDebug;
-	QJDnsShared *dns;
 
 	void waitForSignal(QSignalSpy *spy)
 	{
@@ -235,28 +204,16 @@ private slots:
 
 		server = new HttpServer(this);
 		server->listen();
-
-		dnsDebug = new DnsDebug(this);
-
-		dns = new QJDnsShared(QJDnsShared::UnicastInternet, this);
-		dnsDebug->applyTo(dns);
-
-		dns->addInterface(QHostAddress::Any);
-		dns->addInterface(QHostAddress::AnyIPv6);
 	}
 
 	void cleanupTestCase()
 	{
-		// this will delete dns
-		QJDnsShared::waitForShutdown(QList<QJDnsShared*>() << dns);
-
-		delete dnsDebug;
 		delete server;
 	}
 
 	void requestDnsError()
 	{
-		HttpRequest req(dns);
+		HttpRequest req;
 		QSignalSpy spy(&req, SIGNAL(error()));
 		req.start("GET", QString("http://nosuchhost:%1/").arg(server->localPort()));
 		req.endBody();
@@ -268,7 +225,7 @@ private slots:
 
 	void requestConnectError()
 	{
-		HttpRequest req(dns);
+		HttpRequest req;
 		QSignalSpy spy(&req, SIGNAL(error()));
 		req.start("GET", QString("http://localhost:1/"));
 		req.endBody();
@@ -280,7 +237,7 @@ private slots:
 
 	void requestGet()
 	{
-		HttpRequest req(dns);
+		HttpRequest req;
 		req.start("GET", QString("http://localhost:%1/").arg(server->localPort()), HttpHeaders());
 		req.endBody();
 		QByteArray respBody;
@@ -303,7 +260,7 @@ private slots:
 
 	void requestGetChunked()
 	{
-		HttpRequest req(dns);
+		HttpRequest req;
 		req.start("GET", QString("http://localhost:%1/chunked").arg(server->localPort()), HttpHeaders());
 		req.endBody();
 		QByteArray respBody;
@@ -325,7 +282,7 @@ private slots:
 
 	void requestGetNoContent()
 	{
-		HttpRequest req(dns);
+		HttpRequest req;
 		req.start("GET", QString("http://localhost:%1/204").arg(server->localPort()), HttpHeaders());
 		req.endBody();
 		QByteArray respBody;
@@ -347,7 +304,7 @@ private slots:
 
 	void requestGetNotModified()
 	{
-		HttpRequest req(dns);
+		HttpRequest req;
 		req.start("GET", QString("http://localhost:%1/304").arg(server->localPort()), HttpHeaders());
 		req.endBody();
 		QByteArray respBody;
@@ -369,7 +326,7 @@ private slots:
 
 	void requestPostBody()
 	{
-		HttpRequest req(dns);
+		HttpRequest req;
 		HttpHeaders headers;
 		headers += HttpHeader("Content-Length", "6");
 		req.start("POST", QString("http://localhost:%1/").arg(server->localPort()), headers);
@@ -389,7 +346,7 @@ private slots:
 
 	void requestPostNoBody()
 	{
-		HttpRequest req(dns);
+		HttpRequest req;
 		req.start("POST", QString("http://localhost:%1/").arg(server->localPort()), HttpHeaders(), false);
 		while(!req.isFinished())
 		{
@@ -405,7 +362,7 @@ private slots:
 
 	void requestHead()
 	{
-		HttpRequest req(dns);
+		HttpRequest req;
 		req.start("HEAD", QString("http://localhost:%1/").arg(server->localPort()), HttpHeaders(), false);
 		while(!req.isFinished())
 		{
@@ -422,7 +379,7 @@ private slots:
 
 	void requestHeadMaybeBody()
 	{
-		HttpRequest req(dns);
+		HttpRequest req;
 		req.start("HEAD", QString("http://localhost:%1/").arg(server->localPort()), HttpHeaders());
 		QTest::qWait(10);
 		req.endBody();
@@ -441,7 +398,7 @@ private slots:
 
 	void requestHeadTryBody()
 	{
-		HttpRequest req(dns);
+		HttpRequest req;
 		req.start("HEAD", QString("http://localhost:%1/").arg(server->localPort()), HttpHeaders());
 		req.writeBody("hello\n");
 		req.endBody();
@@ -460,7 +417,7 @@ private slots:
 
 	void requestDeleteNoBody()
 	{
-		HttpRequest req(dns);
+		HttpRequest req;
 		req.start("DELETE", QString("http://localhost:%1/").arg(server->localPort()), HttpHeaders(), false);
 		while(!req.isFinished())
 		{
@@ -477,7 +434,7 @@ private slots:
 
 	void requestDeleteBody()
 	{
-		HttpRequest req(dns);
+		HttpRequest req;
 		req.start("DELETE", QString("http://localhost:%1/").arg(server->localPort()), HttpHeaders());
 		req.writeBody("hello\n");
 		req.endBody();
@@ -496,7 +453,7 @@ private slots:
 
 	void requestDeleteMaybeBody()
 	{
-		HttpRequest req(dns);
+		HttpRequest req;
 		req.start("DELETE", QString("http://localhost:%1/").arg(server->localPort()), HttpHeaders());
 		req.endBody();
 		while(!req.isFinished())

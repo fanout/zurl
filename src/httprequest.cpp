@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2012-2018 Fanout, Inc.
  *
  * This file is part of Zurl.
  *
@@ -30,18 +30,21 @@
 
 #include <assert.h>
 #include <sys/select.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 #ifdef HAVE_OPENSSL
 #include <openssl/ssl.h>
 #endif
+#include <QSet>
 #include <QCoreApplication>
 #include <QSocketNotifier>
 #include <QTimer>
 #include <QPointer>
+#include <QHostAddress>
 #include <QUrl>
 #include <curl/curl.h>
 #include "bufferlist.h"
 #include "log.h"
-#include "addressresolver.h"
 #include "verifyhost.h"
 
 #define BUFFER_SIZE 200000
@@ -77,15 +80,15 @@ class CurlConnection : public QObject
 	Q_OBJECT
 
 public:
-	CURLSH *share;
 	CURL *easy;
 	QString method;
 	int maxRedirects;
 	bool expectBody;
 	bool alwaysSetBody;
 	bool bodyReadFrom;
-	struct curl_slist *dnsCache;
+	struct curl_slist *connectTo;
 	struct curl_slist *headersList;
+	bool addressBlocked;
 	int pauseBits;
 	BufferList in;
 	BufferList out;
@@ -108,8 +111,9 @@ public:
 		expectBody(false),
 		alwaysSetBody(false),
 		bodyReadFrom(false),
-		dnsCache(NULL),
+		connectTo(NULL),
 		headersList(NULL),
+		addressBlocked(false),
 		pauseBits(0),
 		outPos(0),
 		inFinished(false),
@@ -120,14 +124,8 @@ public:
 		newlyWritten(0),
 		pendingUpdate(false)
 	{
-		share = curl_share_init();
 		easy = curl_easy_init();
 
-		// we use jdns for resolving and cache, so isolate curl's own
-		//   caching to this request only
-		curl_share_setopt(share, CURLSHOPT_SHARE, CURL_LOCK_DATA_DNS);
-
-		curl_easy_setopt(easy, CURLOPT_SHARE, share);
 		curl_easy_setopt(easy, CURLOPT_PRIVATE, this);
 		curl_easy_setopt(easy, CURLOPT_DEBUGFUNCTION, debugFunction_cb);
 		curl_easy_setopt(easy, CURLOPT_DEBUGDATA, this);
@@ -139,6 +137,8 @@ public:
 		curl_easy_setopt(easy, CURLOPT_SEEKDATA, this);
 		curl_easy_setopt(easy, CURLOPT_HEADERFUNCTION, headerFunction_cb);
 		curl_easy_setopt(easy, CURLOPT_HEADERDATA, this);
+		curl_easy_setopt(easy, CURLOPT_OPENSOCKETFUNCTION, openSocketFunction_cb);
+		curl_easy_setopt(easy, CURLOPT_OPENSOCKETDATA, this);
 
 #ifdef HAVE_OPENSSL
 		curl_easy_setopt(easy, CURLOPT_SSL_VERIFYHOST, 0L);
@@ -161,9 +161,8 @@ public:
 	~CurlConnection()
 	{
 		curl_easy_cleanup(easy);
-		curl_slist_free_all(dnsCache);
+		curl_slist_free_all(connectTo);
 		curl_slist_free_all(headersList);
-		curl_share_cleanup(share);
 	}
 
 	void setupMethod(const QString &_method, bool _expectBody)
@@ -222,7 +221,7 @@ public:
 			curl_easy_setopt(easy, CURLOPT_UPLOAD, 1L);
 	}
 
-	void setup(const QUrl &_uri, const HttpHeaders &_headers, const QHostAddress &connectAddr = QHostAddress(), int connectPort = -1, int _maxRedirects = -1, const QString &connectHostToTrust = QString())
+	void setup(const QUrl &_uri, const HttpHeaders &_headers, const QString &connectHost = QString(), int connectPort = -1, int _maxRedirects = -1, bool trustConnectHost = false)
 	{
 		assert(!method.isEmpty());
 
@@ -241,36 +240,16 @@ public:
 
 		checkHosts += uri.host(QUrl::FullyEncoded);
 
-		if(!connectAddr.isNull())
+		if(!connectHost.isEmpty())
 		{
-#if LIBCURL_VERSION_NUM >= 0x071400
-			curl_slist_free_all(dnsCache);
+			curl_slist_free_all(connectTo);
+			QByteArray entry = QByteArray("::") + connectHost.toUtf8() + ':' + QByteArray::number(connectPort);
+			connectTo = curl_slist_append(NULL, entry.data());
 
-			if(!connectHostToTrust.isEmpty())
-				checkHosts += connectHostToTrust;
+			curl_easy_setopt(easy, CURLOPT_CONNECT_TO, connectTo);
 
-			QByteArray cacheEntry = uri.host(QUrl::FullyEncoded).toUtf8() + ':' + QByteArray::number(uri.port()) + ':' + connectAddr.toString().toUtf8();
-			dnsCache = curl_slist_append(dnsCache, cacheEntry.data());
-			curl_easy_setopt(easy, CURLOPT_RESOLVE, dnsCache);
-#else
-			// for old versions of libcurl that don't support
-			//   hijacking DNS, we rewrite the URI to use the
-			//   resolved IP as the host, and override the Host
-			//   header with the host from the original URI. this
-			//   has two side-effects:
-			//
-			// 1. ssl cert verification won't work unless zurl is
-			//    compiled with openssl support.
-			// 2. if a custom Host header was provided, it will be
-			//    overwritten.
-
-			Q_UNUSED(connectHostToTrust);
-
-			headers.removeAll("Host");
-			headers += HttpHeader("Host", uri.host().toUtf8());
-
-			uri.setHost(connectAddr.toString());
-#endif
+			if(trustConnectHost)
+				checkHosts += connectHost;
 		}
 
 		curl_easy_setopt(easy, CURLOPT_URL, uri.toEncoded().data());
@@ -330,6 +309,11 @@ public:
 		}
 	}
 
+	void blockAddress()
+	{
+		addressBlocked = true;
+	}
+
 	static size_t debugFunction_cb(CURL *easy, curl_infotype type, char *ptr, size_t size, void *userdata)
 	{
 		CurlConnection *self = (CurlConnection *)userdata;
@@ -358,6 +342,12 @@ public:
 	{
 		CurlConnection *self = (CurlConnection *)userdata;
 		return self->headerFunction((char *)ptr, size * nmemb);
+	}
+
+	static curl_socket_t openSocketFunction_cb(void *userdata, curlsocktype purpose, struct curl_sockaddr *address)
+	{
+		CurlConnection *self = (CurlConnection *)userdata;
+		return self->openSocketFunction(purpose, address);
 	}
 
 #ifdef HAVE_OPENSSL
@@ -582,6 +572,32 @@ public:
 		return size;
 	}
 
+	curl_socket_t openSocketFunction(curlsocktype purpose, struct curl_sockaddr *address)
+	{
+		Q_UNUSED(purpose);
+
+		if(address->family == AF_INET6 || address->family == AF_INET)
+		{
+			QHostAddress addr;
+			addr.setAddress(&address->addr);
+			if(addr.isNull())
+			{
+				return CURL_SOCKET_BAD;
+			}
+
+			addressBlocked = false;
+
+			emit nextAddress(addr);
+
+			if(addressBlocked)
+			{
+				return CURL_SOCKET_BAD;
+			}
+		}
+
+		return socket(address->family, address->socktype, address->protocol);
+	}
+
 #ifdef HAVE_OPENSSL
 	CURLcode sslCtxFunction(CURL *_easy, SSL_CTX *context)
 	{
@@ -621,6 +637,9 @@ public:
 	}
 
 signals:
+	// NOTE: not DOR-SS
+	void nextAddress(const QHostAddress &addr);
+
 	void updated();
 
 public slots:
@@ -978,43 +997,39 @@ class HttpRequest::Private : public QObject
 
 public:
 	HttpRequest *q;
-	QJDnsShared *dns;
-	AddressResolver *resolver;
 	QString connectHost;
+	int connectPort;
 	bool trustConnectHost;
 	bool ignoreTlsErrors;
 	int maxRedirects;
+	int addressesAttempted;
+	int addressesBlocked;
 	HttpRequest::ErrorCondition errorCondition;
 	QString method;
 	QUrl uri;
 	HttpHeaders headers;
 	bool willWriteBody;
 	bool bodyNotAllowed;
-	QString host;
-	QList<QHostAddress> addrs;
-	HttpRequest::ErrorCondition mostSignificantError;
 	bool ignoreBody;
 	CurlConnection *conn;
 	CurlConnectionManager *manager;
 
-	Private(HttpRequest *_q, QJDnsShared *_dns) :
+	Private(HttpRequest *_q) :
 		QObject(_q),
 		q(_q),
-		dns(_dns),
+		connectPort(-1),
 		trustConnectHost(false),
 		ignoreTlsErrors(false),
 		maxRedirects(-1),
+		addressesAttempted(0),
+		addressesBlocked(0),
 		errorCondition(HttpRequest::ErrorNone),
 		willWriteBody(false),
 		bodyNotAllowed(false),
-		mostSignificantError(HttpRequest::ErrorGeneric),
 		ignoreBody(false),
 		conn(0),
 		manager(0)
 	{
-		resolver = new AddressResolver(dns, this);
-		connect(resolver, &AddressResolver::resultsReady, this, &Private::resolver_resultsReady);
-		connect(resolver, &AddressResolver::error, this, &Private::resolver_error);
 	}
 
 	~Private()
@@ -1039,28 +1054,11 @@ public:
 		}
 	}
 
-	// remake the connection object for retrying
-	void remakeConn()
-	{
-		if(conn)
-		{
-			// take the request body with us
-			BufferList out = conn->out;
-			bool outFinished = conn->outFinished;
-
-			cleanup();
-
-			conn = new CurlConnection;
-			connect(conn, &CurlConnection::updated, this, &Private::conn_updated);
-
-			conn->setupMethod(method, willWriteBody);
-			conn->out = out;
-			conn->outFinished = outFinished;
-		}
-	}
-
 	void start(const QString &_method, const QUrl &_uri, const HttpHeaders &_headers, bool _willWriteBody)
 	{
+		addressesAttempted = 0;
+		addressesBlocked = 0;
+
 		if(_method.isEmpty() || (_uri.scheme() != "https" && _uri.scheme() != "http"))
 		{
 			ignoreBody = true;
@@ -1179,6 +1177,7 @@ public:
 		assert(!conn);
 
 		conn = new CurlConnection;
+		connect(conn, &CurlConnection::nextAddress, this, &Private::conn_nextAddress);
 		connect(conn, &CurlConnection::updated, this, &Private::conn_updated);
 
 		// eat any transport headers as they'd likely break things
@@ -1191,54 +1190,7 @@ public:
 
 		conn->setupMethod(method, willWriteBody);
 
-		if(!connectHost.isEmpty())
-			host = connectHost;
-		else
-			host = uri.host();
-
-		resolver->start(host);
-	}
-
-	// the idea with the priorities here is that an error is considered
-	//   more significant the closer the request was to succeeding. e.g.
-	//   ErrorTls means the server was actually reached. ErrorPolicy means
-	//   we didn't even attempt to try connecting.
-	static int errorPriority(HttpRequest::ErrorCondition e)
-	{
-		if(e == HttpRequest::ErrorTls)
-			return 100;
-		else if(e == HttpRequest::ErrorConnect)
-			return 99;
-		else if(e == HttpRequest::ErrorTimeout)
-			return 98;
-		else if(e == HttpRequest::ErrorPolicy)
-			return 97;
-		else
-			return 0;
-	}
-
-private slots:
-	// this method emits signals, so don't call directly from start()
-	void tryNextAddress()
-	{
-		QPointer<QObject> self = this;
-
-		if(addrs.isEmpty())
-		{
-			errorCondition = mostSignificantError;
-			emit q->error();
-			return;
-		}
-
-		QHostAddress addr = addrs.takeFirst();
-
-		log_debug("trying %s", qPrintable(addr.toString()));
-
-		emit q->nextAddress(addr);
-		if(!self)
-			return;
-
-		conn->setup(uri, headers, addr, -1, maxRedirects, trustConnectHost ? connectHost : QString());
+		conn->setup(uri, headers, connectHost, connectPort, maxRedirects, trustConnectHost);
 
 		if(ignoreTlsErrors)
 		{
@@ -1258,16 +1210,12 @@ private slots:
 		manager->doSocketAction(false, CURL_SOCKET_TIMEOUT, 0);
 	}
 
-	void resolver_resultsReady(const QList<QHostAddress> &results)
+private slots:
+	void conn_nextAddress(const QHostAddress &addr)
 	{
-		addrs += results;
-		tryNextAddress();
-	}
+		++addressesAttempted;
 
-	void resolver_error()
-	{
-		errorCondition = HttpRequest::ErrorConnect;
-		emit q->error();
+		emit q->nextAddress(addr);
 	}
 
 	void conn_updated()
@@ -1276,48 +1224,35 @@ private slots:
 		{
 			log_debug("curl result: %d", conn->result);
 
-			bool tryAgain = true;
-
 			HttpRequest::ErrorCondition curError;
 			switch(conn->result)
 			{
+				case CURLE_COULDNT_RESOLVE_HOST:
 				case CURLE_COULDNT_CONNECT:
-					curError = HttpRequest::ErrorConnect;
+					if(addressesAttempted > 0 && addressesBlocked >= addressesAttempted)
+					{
+						curError = HttpRequest::ErrorPolicy;
+					}
+					else
+					{
+						curError = HttpRequest::ErrorConnect;
+					}
 					break;
 				case CURLE_PEER_FAILED_VERIFICATION:
 					curError = HttpRequest::ErrorTls;
 					break;
 				case CURLE_OPERATION_TIMEDOUT:
-					// NOTE: if we get this then there may be a chance the request
-					//   was actually sent off
 					curError = HttpRequest::ErrorTimeout;
 					break;
 				case CURLE_TOO_MANY_REDIRECTS:
 					curError = HttpRequest::ErrorTooManyRedirects;
 					break;
 				default:
-					tryAgain = false;
 					curError = HttpRequest::ErrorGeneric;
 			}
 
-			if(errorPriority(curError) > errorPriority(mostSignificantError))
-				mostSignificantError = curError;
-
-			// don't try again if we know we sent off a request
-			if(conn->bodyReadFrom || conn->haveResponseHeaders)
-				tryAgain = false;
-
-			if(tryAgain)
-			{
-				remakeConn();
-				tryNextAddress();
-			}
-			else
-			{
-				errorCondition = mostSignificantError;
-				emit q->error();
-				return;
-			}
+			errorCondition = curError;
+			emit q->error();
 		}
 		else
 		{
@@ -1341,10 +1276,10 @@ private slots:
 	}
 };
 
-HttpRequest::HttpRequest(QJDnsShared *dns, QObject *parent) :
+HttpRequest::HttpRequest(QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, dns);
+	d = new Private(this);
 }
 
 HttpRequest::~HttpRequest()
@@ -1352,9 +1287,10 @@ HttpRequest::~HttpRequest()
 	delete d;
 }
 
-void HttpRequest::setConnectHost(const QString &host)
+void HttpRequest::setConnectHostPort(const QString &host, int port)
 {
 	d->connectHost = host;
+	d->connectPort = port;
 }
 
 void HttpRequest::setTrustConnectHost(bool on)
@@ -1435,6 +1371,15 @@ HttpHeaders HttpRequest::responseHeaders() const
 QByteArray HttpRequest::readResponseBody(int size)
 {
 	return d->readResponseBody(size);
+}
+
+void HttpRequest::blockAddress()
+{
+	if(d->conn)
+	{
+		++(d->addressesBlocked);
+		d->conn->blockAddress();
+	}
 }
 
 void HttpRequest::setPersistentConnectionMaxTime(int secs)
