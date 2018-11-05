@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017 Fanout, Inc.
+ * Copyright (C) 2012-2018 Fanout, Inc.
  *
  * This file is part of Zurl.
  *
@@ -329,6 +329,7 @@ public:
 		QString out_spec = settings.value("out_spec").toString();
 		QString in_req_spec = settings.value("in_req_spec").toString();
 		QString ipcFileModeStr = settings.value("ipc_file_mode").toString();
+		config.allowIPv6 = settings.value("allow_ipv6", false).toBool();
 		config.maxWorkers = settings.value("max_open_requests", -1).toInt();
 		config.sessionBufferSize = settings.value("buffer_size", 200000).toInt();
 		config.activityTimeout = settings.value("timeout", 600).toInt();

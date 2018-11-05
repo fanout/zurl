@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2012-2018 Fanout, Inc.
  *
  * This file is part of Zurl.
  *
@@ -38,6 +38,7 @@ public:
 	QByteArray clientId;
 	QString defaultPolicy;
 	QStringList allowExps, denyExps;
+	bool allowIPv6;
 	int maxWorkers;
 	int sessionBufferSize;
 	int activityTimeout;

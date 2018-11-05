@@ -321,6 +321,8 @@ public:
 			maxResponseSize = request.maxSize;
 			sessionTimeout = request.timeout;
 
+			hreq->setAllowIPv6(config->allowIPv6);
+
 			if(!request.connectHost.isEmpty())
 				hreq->setConnectHostPort(request.connectHost, request.connectPort);
 

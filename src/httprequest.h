@@ -59,6 +59,7 @@ public:
 	void setTrustConnectHost(bool on);
 	void setIgnoreTlsErrors(bool on);
 	void setFollowRedirects(int maxRedirects); // -1 to disable
+	void setAllowIPv6(bool on);
 
 	void start(const QString &method, const QUrl &uri, const HttpHeaders &headers = HttpHeaders(), bool willWriteBody = true);
 

@@ -221,7 +221,7 @@ public:
 			curl_easy_setopt(easy, CURLOPT_UPLOAD, 1L);
 	}
 
-	void setup(const QUrl &_uri, const HttpHeaders &_headers, const QString &connectHost = QString(), int connectPort = -1, int _maxRedirects = -1, bool trustConnectHost = false)
+	void setup(const QUrl &_uri, const HttpHeaders &_headers, const QString &connectHost = QString(), int connectPort = -1, int _maxRedirects = -1, bool trustConnectHost = false, bool allowIPv6 = false)
 	{
 		assert(!method.isEmpty());
 
@@ -297,6 +297,11 @@ public:
 		}
 
 		curl_easy_setopt(easy, CURLOPT_POSTREDIR, CURL_REDIR_POST_ALL);
+
+		if(!allowIPv6)
+		{
+			curl_easy_setopt(easy, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+		}
 	}
 
 	void update()
@@ -1000,6 +1005,7 @@ public:
 	QString connectHost;
 	int connectPort;
 	bool trustConnectHost;
+	bool allowIPv6;
 	bool ignoreTlsErrors;
 	int maxRedirects;
 	int addressesAttempted;
@@ -1019,6 +1025,7 @@ public:
 		q(_q),
 		connectPort(-1),
 		trustConnectHost(false),
+		allowIPv6(false),
 		ignoreTlsErrors(false),
 		maxRedirects(-1),
 		addressesAttempted(0),
@@ -1190,7 +1197,7 @@ public:
 
 		conn->setupMethod(method, willWriteBody);
 
-		conn->setup(uri, headers, connectHost, connectPort, maxRedirects, trustConnectHost);
+		conn->setup(uri, headers, connectHost, connectPort, maxRedirects, trustConnectHost, allowIPv6);
 
 		if(ignoreTlsErrors)
 		{
@@ -1216,6 +1223,12 @@ private slots:
 		++addressesAttempted;
 
 		log_debug("trying %s", qPrintable(addr.toString()));
+
+		if(!allowIPv6 && addr.protocol() != QAbstractSocket::IPv4Protocol)
+		{
+			conn->blockAddress();
+			return;
+		}
 
 		emit q->nextAddress(addr);
 	}
@@ -1308,6 +1321,11 @@ void HttpRequest::setIgnoreTlsErrors(bool on)
 void HttpRequest::setFollowRedirects(int maxRedirects)
 {
 	d->maxRedirects = maxRedirects;
+}
+
+void HttpRequest::setAllowIPv6(bool on)
+{
+	d->allowIPv6 = on;
 }
 
 void HttpRequest::start(const QString &method, const QUrl &uri, const HttpHeaders &headers, bool willWriteBody)
