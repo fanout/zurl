@@ -1215,6 +1215,8 @@ private slots:
 	{
 		++addressesAttempted;
 
+		log_debug("trying %s", qPrintable(addr.toString()));
+
 		emit q->nextAddress(addr);
 	}
 
