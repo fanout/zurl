@@ -587,6 +587,21 @@ public:
 
 	static bool matchExp(const QString &exp, const QString &s)
 	{
+		QHostAddress addr(s);
+
+		if(!addr.isNull())
+		{
+			int at = exp.indexOf('/');
+			if(at != -1)
+			{
+				QPair<QHostAddress, int> sn = QHostAddress::parseSubnet(exp);
+				if(!sn.first.isNull())
+				{
+					return addr.isInSubnet(sn.first, sn.second);
+				}
+			}
+		}
+
 		int at = exp.indexOf('*');
 		if(at != -1)
 		{
@@ -594,8 +609,8 @@ public:
 			QString end = exp.mid(at + 1);
 			return (s.startsWith(start, Qt::CaseInsensitive) && s.endsWith(end, Qt::CaseInsensitive));
 		}
-		else
-			return s.compare(exp, Qt::CaseInsensitive);
+
+		return (s.compare(exp, Qt::CaseInsensitive) == 0);
 	}
 
 	bool checkAllow(const QString &in) const

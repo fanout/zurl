@@ -24,7 +24,7 @@ defpolicy=allow
 allow=
 
 # hosts to deny
-#deny=127.*,10.*,192.168.*,*.local
+#deny=127/8,10/8,172.16/12,192.168/16,::/0
 
 # worker count
 max_open_requests=2000
