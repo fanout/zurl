@@ -1253,6 +1253,9 @@ private slots:
 						curError = HttpRequest::ErrorConnect;
 					}
 					break;
+#if LIBCURL_VERSION_NUM < 0x073e00
+				case CURLE_SSL_CACERT:
+#endif
 				case CURLE_PEER_FAILED_VERIFICATION:
 					curError = HttpRequest::ErrorTls;
 					break;
