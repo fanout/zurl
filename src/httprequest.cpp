@@ -221,20 +221,9 @@ public:
 			curl_easy_setopt(easy, CURLOPT_UPLOAD, 1L);
 	}
 
-	void setup(const QUrl &_uri, const HttpHeaders &_headers, const QString &connectHost = QString(), int connectPort = -1, int _maxRedirects = -1, bool trustConnectHost = false, bool allowIPv6 = false)
+	void setup(const QUrl &uri, const HttpHeaders &_headers, const QString &connectHost = QString(), int connectPort = -1, int _maxRedirects = -1, bool trustConnectHost = false, bool allowIPv6 = false)
 	{
 		assert(!method.isEmpty());
-
-		QUrl uri = _uri;
-		if(connectPort != -1)
-			uri.setPort(connectPort);
-		else if(uri.port() == -1)
-		{
-			if(uri.scheme() == "https")
-				uri.setPort(443);
-			else
-				uri.setPort(80);
-		}
 
 		HttpHeaders headers = _headers;
 
