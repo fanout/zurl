@@ -3,10 +3,10 @@ Zurl Changelog
 
 v. 1.10.0 (2018-12-18)
 
-  * Fix compilation with curl 7.62.
+  * Fix compilation with libcurl 7.62.
   * Increase minimum libcurl version to 7.49.
   * WebSocket: support close reasons.
-  * HTTP: let curl handle DNS, so c-ares can be used.
+  * HTTP: let libcurl handle DNS, so c-ares can be used.
   * Support CIDR notation for allow/deny.
   * Support IPv6 (disabled by default).
 
