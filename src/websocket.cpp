@@ -1084,6 +1084,15 @@ private slots:
 				curError = ErrorConnect;
 				break;
 			case QAbstractSocket::RemoteHostClosedError:
+				if(state == Closing && peerClosing)
+				{
+					// we should not get this error in
+					// this state, but if we do, ignore
+					// it. the disconnected signal will
+					// come soon after
+					return;
+				}
+
 				if(readingResponseBody && responseContentLength == -1 && !chunked)
 				{
 					handleResponse();
