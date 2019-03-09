@@ -939,6 +939,9 @@ private slots:
 		log_debug("ws: connected");
 
 		QByteArray path = requestUri.path(QUrl::FullyEncoded).toUtf8();
+		if(path.isEmpty())
+			path = "/";
+
 		if(requestUri.hasQuery())
 			path += '?' + requestUri.query(QUrl::FullyEncoded).toUtf8();
 
