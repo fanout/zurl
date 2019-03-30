@@ -14,8 +14,20 @@ public:
 	QString name() const { return "openssl >= 1.0.0"; }
 	QString shortname() const { return "openssl"; }
 
+	QString resultString() const
+	{
+#if defined(Q_OS_MAC)
+		return "not used in mac builds";
+#else
+		return ConfObj::resultString();
+#endif
+	}
+
 	bool exec()
 	{
+#if defined(Q_OS_MAC)
+		return false;
+#else
 		QString version;
 
 		QStringList cryptoIncs;
@@ -46,7 +58,7 @@ public:
 			conf->addIncludePath(inc);
 		if(!libs.isEmpty())
 			conf->addLib(libs);
-
 		return true;
+#endif
 	}
 };
