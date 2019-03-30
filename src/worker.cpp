@@ -1121,7 +1121,7 @@ private slots:
 				condition = "frame-too-large"; break;
 			case WebSocket::ErrorTimeout:
 				condition = "connection-timeout"; break;
-			case HttpRequest::ErrorGeneric:
+			case WebSocket::ErrorGeneric:
 			default:
 				condition = "undefined-condition";
 				break;
