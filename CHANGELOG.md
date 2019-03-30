@@ -1,6 +1,12 @@
 Zurl Changelog
 ==============
 
+v. 1.10.1 (2019-03-29)
+
+  * Disable OpenSSL on Mac. It conflicts with libcurl's TLS backend.
+  * WebSocket: don't send empty path.
+  * WebSocket: don't sometimes emit error during clean close.
+
 v. 1.10.0 (2018-12-18)
 
   * Fix compilation with libcurl 7.62.
