@@ -69,7 +69,7 @@ If accessing from Git, be sure to pull submodules:
 
 Build:
 
-    ./configure
+    ./configure --qtselect=5
     make
 
 Run:
