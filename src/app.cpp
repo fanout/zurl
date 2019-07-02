@@ -275,10 +275,24 @@ public:
 			return;
 		}
 
+		int logLevel = LOG_LEVEL_INFO;
+		QString logLevelString = options.value("loglevel");
+		if(!logLevelString.isEmpty())
+		{
+			bool ok;
+			logLevel = logLevelString.toInt(&ok);
+			if(!ok || logLevel < LOG_LEVEL_ERROR)
+			{
+				log_error("parameter to --loglevel invalid: %s", qPrintable(logLevelString));
+				emit q->quit();
+				return;
+			}
+		}
+
 		if(options.contains("verbose"))
-			log_setOutputLevel(LOG_LEVEL_DEBUG);
-		else
-			log_setOutputLevel(LOG_LEVEL_INFO);
+			logLevel = LOG_LEVEL_DEBUG;
+
+		log_setOutputLevel(logLevel);
 
 		QString logFile = options.value("logfile");
 		if(!logFile.isEmpty())
