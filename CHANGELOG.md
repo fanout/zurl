@@ -1,7 +1,7 @@
 Zurl Changelog
 ==============
 
-v. 1.10.1 (2019-07-03)
+v. 1.11.0 (2019-07-03)
 
   * Add --loglevel option.
 
