@@ -1,6 +1,10 @@
 Zurl Changelog
 ==============
 
+v. 1.10.1 (2019-07-03)
+
+  * Add --loglevel option.
+
 v. 1.10.1 (2019-03-29)
 
   * Disable OpenSSL on Mac. It conflicts with libcurl's TLS backend.
