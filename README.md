@@ -1,10 +1,8 @@
-Zurl
-====
-Author: Justin Karneges <justin@fanout.io>  
-Mailing List: http://lists.fanout.io/mailman/listinfo/fanout-users
+# Zurl
 
-Description
------------
+Author: Justin Karneges <justin@fanout.io>
+
+## Description
 
 Zurl is an HTTP and WebSocket client daemon with a ZeroMQ interface. Send it a message to make an HTTP request.
 
@@ -35,13 +33,11 @@ Zurl can also make sense as part of a greater ZeroMQ-based architecture, where y
 
 See [Fun With Zurl](http://blog.fanout.io/2014/02/18/fun-with-zurl-the-http-websocket-client-daemon/) for some wild possibilities that a message-oriented HTTP client daemon can bring.
 
-License
--------
+## License
 
 Zurl is offered under the GNU GPL. See the COPYING file.
 
-Features
---------
+## Features
 
   * Request HTTP and HTTPS URLs
   * Connect to WS and WSS URLs for WebSockets
@@ -52,15 +48,13 @@ Features
   * Packet format can be JSON or TNetStrings
   * Set access policies (e.g. block requests to 10.*)
 
-Requirements
-------------
+## Requirements
 
   * qt >= 5.2
   * libzmq >= 2.0
   * libcurl >= 7.20
 
-Setup
------
+## Setup
 
 If accessing from Git, be sure to pull submodules:
 
@@ -77,8 +71,7 @@ Run:
     cp zurl.conf.example zurl.conf
     ./zurl --verbose --config=zurl.conf
 
-Message Format
---------------
+## Message Format
 
 Requests and response messages are encoded in JSON or TNetStrings format. The format type is indicated by prefixing the encoded output with either a 'J' character or a 'T' character, respectively.
 
@@ -134,14 +127,12 @@ Responses may have the following fields:
 * ``body`` - The response body content.
 * ``user-data`` - If this field was specified in the request, then it will be included in the response.
 
-Sockets
--------
+## Sockets
 
 For basic usage, connect to Zurl's request-based interface using a REQ socket (ipc:///tmp/zurl-req by default, see your zurl.conf). To make a request, send a message over the socket. To receive the response, read from the socket.
 
 For advanced usage you can connect to Zurl's streaming interface using PUSH, ROUTER, and SUB sockets. See tools/getstream.py as an example or check out the [ZHTTP draft spec](http://rfc.zeromq.org/spec:33) for details.
 
-WebSockets
-----------
+## WebSockets
 
 Creating a WebSocket connection through Zurl uses a variant of the ZHTTP protocol. Zurl's streaming interface must be used in this case. The protocol is not documented yet, but you can see tools/wsecho.py as an example.
