@@ -1,9 +1,9 @@
 [submodule "src/qzmq"]
 	path = src/qzmq
-	url = git://github.com/jkarneges/qzmq.git
+	url = https://github.com/jkarneges/qzmq.git
 [submodule "src/common"]
 	path = src/common
-	url = git://github.com/fanout/common.git
+	url = https://github.com/fanout/common.git
 [submodule "src/jdns"]
 	path = src/jdns
-	url = git://github.com/psi-im/jdns.git
+	url = https://github.com/psi-im/jdns.git
