@@ -1,6 +1,10 @@
 Zurl Changelog
 ==============
 
+v. 1.11.1 (2022-01-26)
+
+  * Fix crash due to incorrect use of curl.
+
 v. 1.11.0 (2019-07-03)
 
   * Add --loglevel option.
