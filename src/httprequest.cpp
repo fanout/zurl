@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2018 Fanout, Inc.
+ * Copyright (C) 2012-2022 Fanout, Inc.
  *
  * This file is part of Zurl.
  *
@@ -777,22 +777,14 @@ public:
 		Q_UNUSED(multi);
 
 		if(timeout_ms >= 0)
+		{
 			log_debug("timerFunction: wake up in %dms", (int)timeout_ms);
-		else
-			log_debug("timerFunction: cancel timer");
-
-		if(timeout_ms == -1)
-		{
-			if(timer)
-				timer->stop();
-		}
-		else if(timeout_ms == 0)
-		{
-			timer_timeout();
-		}
-		else
-		{
 			timer->start((int)timeout_ms);
+		}
+		else
+		{
+			log_debug("timerFunction: cancel timer");
+			timer->stop();
 		}
 	}
 
