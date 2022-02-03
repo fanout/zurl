@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2018 Fanout, Inc.
+ * Copyright (C) 2014-2022 Fanout, Inc.
  * 
  * This file is part of Zurl.
  *
@@ -330,7 +330,6 @@ public:
 	};
 
 	WebSocket *q;
-	QJDnsShared *dns;
 	AddressResolver *resolver;
 	State state;
 	QString connectHost;
@@ -364,10 +363,9 @@ public:
 	QList<WriteItem> pendingWrites;
 	int followedRedirects;
 
-	Private(WebSocket *_q, QJDnsShared *_dns) :
+	Private(WebSocket *_q) :
 		QObject(_q),
 		q(_q),
-		dns(_dns),
 		state(Idle),
 		trustConnectHost(false),
 		ignoreTlsErrors(false),
@@ -387,7 +385,7 @@ public:
 		pendingRead(false),
 		followedRedirects(0)
 	{
-		resolver = new AddressResolver(dns, this);
+		resolver = new AddressResolver(this);
 		connect(resolver, &AddressResolver::resultsReady, this, &Private::resolver_resultsReady);
 		connect(resolver, &AddressResolver::error, this, &Private::resolver_error);
 	}
@@ -1161,10 +1159,10 @@ private slots:
 	}
 };
 
-WebSocket::WebSocket(QJDnsShared *dns, QObject *parent) :
+WebSocket::WebSocket(QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, dns);
+	d = new Private(this);
 }
 
 WebSocket::~WebSocket()

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017 Fanout, Inc.
+ * Copyright (C) 2012-2022 Fanout, Inc.
  * 
  * This file is part of Zurl.
  *
@@ -32,7 +32,6 @@
 #include <QObject>
 
 class QVariant;
-class QJDnsShared;
 class ZhttpRequestPacket;
 class ZhttpResponsePacket;
 class AppConfig;
@@ -54,7 +53,7 @@ public:
 		JsonFormat
 	};
 
-	Worker(QJDnsShared *dns, AppConfig *config, Format format, QObject *parent = 0);
+	Worker(AppConfig *config, Format format, QObject *parent = 0);
 	~Worker();
 
 	QByteArray rid() const;

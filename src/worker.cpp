@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2018 Fanout, Inc.
+ * Copyright (C) 2012-2022 Fanout, Inc.
  * 
  * This file is part of Zurl.
  *
@@ -32,7 +32,6 @@
 #include <QVariant>
 #include <QTimer>
 #include <QPointer>
-#include "qjdnsshared.h"
 #include "httprequest.h"
 #include "websocket.h"
 #include "zhttprequestpacket.h"
@@ -68,7 +67,6 @@ public:
 	};
 
 	Worker *q;
-	QJDnsShared *dns;
 	AppConfig *config;
 	Transport transport;
 	Worker::Format format;
@@ -104,10 +102,9 @@ public:
 	bool multi;
 	bool quietLog;
 
-	Private(QJDnsShared *_dns, AppConfig *_config, Worker::Format _format, Worker *_q) :
+	Private(AppConfig *_config, Worker::Format _format, Worker *_q) :
 		QObject(_q),
 		q(_q),
-		dns(_dns),
 		config(_config),
 		format(_format),
 		state(NotStarted),
@@ -375,7 +372,7 @@ public:
 				headers += HttpHeader("Host", hostHeader);
 			}
 
-			ws = new WebSocket(dns, this);
+			ws = new WebSocket(this);
 			connect(ws, &WebSocket::nextAddress, this, &Private::ws_nextAddress);
 			connect(ws, &WebSocket::connected, this, &Private::ws_connected);
 			connect(ws, &WebSocket::readyRead, this, &Private::ws_readyRead);
@@ -1157,10 +1154,10 @@ private slots:
 	}
 };
 
-Worker::Worker(QJDnsShared *dns, AppConfig *config, Format format, QObject *parent) :
+Worker::Worker(AppConfig *config, Format format, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(dns, config, format, this);
+	d = new Private(config, format, this);
 }
 
 Worker::~Worker()

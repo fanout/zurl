@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Fanout, Inc.
+ * Copyright (C) 2015-2022 Fanout, Inc.
  *
  * This file is part of Zurl.
  *
@@ -32,14 +32,12 @@
 #include <QObject>
 #include <QHostAddress>
 
-class QJDnsShared;
-
 class AddressResolver : public QObject
 {
 	Q_OBJECT
 
 public:
-	AddressResolver(QJDnsShared *dns, QObject *parent = 0);
+	AddressResolver(QObject *parent = 0);
 	~AddressResolver();
 
 	void start(const QString &hostName);

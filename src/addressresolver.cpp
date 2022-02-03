@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Fanout, Inc.
+ * Copyright (C) 2015-2022 Fanout, Inc.
  *
  * This file is part of Zurl.
  *
@@ -29,7 +29,7 @@
 #include "addressresolver.h"
 
 #include <assert.h>
-#include "qjdnsshared.h"
+#include <QHostInfo>
 #include "log.h"
 
 class AddressResolver::Private : public QObject
@@ -38,29 +38,38 @@ class AddressResolver::Private : public QObject
 
 public:
 	AddressResolver *q;
-	QJDnsShared *dns;
-	QList<QByteArray> searchDomains;
-	QString host;
-	bool absoluteFirst;
-	bool didAbsolute;
+	bool started;
+	int lookupId;
 	QList<QHostAddress> results;
 
-	Private(AddressResolver *_q, QJDnsShared *_dns) :
+	Private(AddressResolver *_q) :
 		QObject(_q),
 		q(_q),
-		dns(_dns),
-		absoluteFirst(false),
-		didAbsolute(false)
+		started(false)
 	{
+	}
+
+	~Private()
+	{
+		cancel();
+	}
+
+	void cancel()
+	{
+		if(started)
+		{
+			started = false;
+			QHostInfo::abortHostLookup(lookupId);
+		}
+
+		results.clear();
 	}
 
 	void start(const QString &hostName)
 	{
-		results.clear();
+		cancel();
 
-		host = hostName;
-
-		QHostAddress addr(host);
+		QHostAddress addr(hostName);
 		if(!addr.isNull())
 		{
 			results += addr;
@@ -68,72 +77,26 @@ public:
 			return;
 		}
 
-		absoluteFirst = (host.contains(".") || host == "localhost");
-		didAbsolute = false;
+		log_debug("resolving: [%s]", qPrintable(hostName));
 
-		searchDomains = QJDnsShared::domains();
-
-		nextQuery();
-	}
-
-private:
-	void nextQuery()
-	{
-		QString h;
-
-		if(!didAbsolute && (absoluteFirst || searchDomains.isEmpty()))
-		{
-			didAbsolute = true;
-			h = host;
-		}
-		else
-		{
-			assert(!searchDomains.isEmpty());
-			h = host + "." + QString::fromUtf8(searchDomains.takeFirst());
-		}
-
-		QByteArray rawHost = QUrl::toAce(h);
-		log_debug("resolving: [%s]", rawHost.data());
-
-		QJDnsSharedRequest *dreq = new QJDnsSharedRequest(dns, this);
-		connect(dreq, &QJDnsSharedRequest::resultsReady, this, &Private::dreq_resultsReady);
-		dreq->query(rawHost, QJDns::A);
+		lookupId = QHostInfo::lookupHost(hostName, this, SLOT(lookupHost_finished(QHostInfo)));
+		started = true;
 	}
 
 private slots:
-	void dreq_resultsReady()
+	void lookupHost_finished(QHostInfo info)
 	{
-		QJDnsSharedRequest *dreq = (QJDnsSharedRequest *)sender();
+		started = false;
 
-		if(dreq->success())
+		if(info.error() != QHostInfo::NoError)
 		{
-			QList<QHostAddress> tmp;
-			foreach(const QJDns::Record &r, dreq->results())
-			{
-				if(r.type == QJDns::A)
-					tmp += r.address;
-			}
-
-			delete dreq;
-
-			// randomize the results
-			while(!tmp.isEmpty())
-				results += tmp.takeAt(qrand() % tmp.count());
-
-			doFinish();
-		}
-		else
-		{
-			delete dreq;
-
-			if(!didAbsolute || !searchDomains.isEmpty())
-			{
-				nextQuery();
-				return;
-			}
-
 			emit q->error();
+			return;
 		}
+
+		results += info.addresses();
+
+		doFinish();
 	}
 
 	void doFinish()
@@ -142,10 +105,10 @@ private slots:
 	}
 };
 
-AddressResolver::AddressResolver(QJDnsShared *dns, QObject *parent) :
+AddressResolver::AddressResolver(QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, dns);
+	d = new Private(this);
 }
 
 AddressResolver::~AddressResolver()

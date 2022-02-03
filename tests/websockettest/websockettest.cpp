@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Fanout, Inc.
+ * Copyright (C) 2013-2022 Fanout, Inc.
  *
  * This file is part of Zurl.
  *
@@ -30,7 +30,6 @@
 #include <QTcpServer>
 #include <QtTest/QtTest>
 #include "log.h"
-#include "qjdnsshared.h"
 #include "httpheaders.h"
 #include "websocket.h"
 
@@ -153,7 +152,6 @@ class WebSocketTest : public QObject
 
 private:
 	WebSocketServer *server;
-	QJDnsShared *dns;
 
 	void waitForSignal(QSignalSpy *spy)
 	{
@@ -168,21 +166,16 @@ private slots:
 
 		server = new WebSocketServer(this);
 		server->listen();
-
-		dns = new QJDnsShared(QJDnsShared::UnicastInternet, this);
-		dns->addInterface(QHostAddress::Any);
-		dns->addInterface(QHostAddress::AnyIPv6);
 	}
 
 	void cleanupTestCase()
 	{
-		delete dns;
 		delete server;
 	}
 
 	void handshakeDnsError()
 	{
-		WebSocket sock(dns);
+		WebSocket sock;
 		QSignalSpy spy(&sock, SIGNAL(error()));
 		sock.start(QString("http://nosuchhost:%1/").arg(server->localPort()));
 		waitForSignal(&spy);
@@ -192,7 +185,7 @@ private slots:
 
 	void handshakeConnectError()
 	{
-		WebSocket sock(dns);
+		WebSocket sock;
 		QSignalSpy spy(&sock, SIGNAL(error()));
 		sock.start(QString("http://localhost:1/"));
 		waitForSignal(&spy);
@@ -202,7 +195,7 @@ private slots:
 
 	void handshakeSuccess()
 	{
-		WebSocket sock(dns);
+		WebSocket sock;
 		QSignalSpy spy(&sock, SIGNAL(connected()));
 		sock.start(QString("http://localhost:%1/").arg(server->localPort()), HttpHeaders());
 		waitForSignal(&spy);
@@ -216,7 +209,7 @@ private slots:
 
 	void handshakeFail()
 	{
-		WebSocket sock(dns);
+		WebSocket sock;
 		QSignalSpy spy(&sock, SIGNAL(error()));
 		sock.start(QString("http://localhost:%1/fail").arg(server->localPort()), HttpHeaders());
 		waitForSignal(&spy);
@@ -228,7 +221,7 @@ private slots:
 
 	void handshakeFailNoContent()
 	{
-		WebSocket sock(dns);
+		WebSocket sock;
 		QSignalSpy spy(&sock, SIGNAL(error()));
 		sock.start(QString("http://localhost:%1/fail-nocontent").arg(server->localPort()), HttpHeaders());
 		waitForSignal(&spy);
@@ -240,7 +233,7 @@ private slots:
 
 	void handshakeFailChunked()
 	{
-		WebSocket sock(dns);
+		WebSocket sock;
 		QSignalSpy spy(&sock, SIGNAL(error()));
 		sock.start(QString("http://localhost:%1/fail-chunked").arg(server->localPort()), HttpHeaders());
 		waitForSignal(&spy);
@@ -252,7 +245,7 @@ private slots:
 
 	void handshakeFailIndefinite()
 	{
-		WebSocket sock(dns);
+		WebSocket sock;
 		QSignalSpy spy(&sock, SIGNAL(error()));
 		sock.start(QString("http://localhost:%1/fail-indefinite").arg(server->localPort()), HttpHeaders());
 		waitForSignal(&spy);

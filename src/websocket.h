@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2014-2022 Fanout, Inc.
  * 
  * This file is part of Zurl.
  *
@@ -34,7 +34,6 @@
 
 class QHostAddress;
 class QUrl;
-class QJDnsShared;
 
 class WebSocket : public QObject
 {
@@ -85,7 +84,7 @@ public:
 		}
 	};
 
-	WebSocket(QJDnsShared *dns, QObject *parent = 0);
+	WebSocket(QObject *parent = 0);
 	~WebSocket();
 
 	void setConnectHost(const QString &host);
