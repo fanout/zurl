@@ -203,7 +203,9 @@ private slots:
 		//log_setOutputLevel(LOG_LEVEL_DEBUG);
 
 		server = new HttpServer(this);
-		server->listen();
+		if(!server->listen()) {
+			QFAIL("HttpServer failed to listen");
+		}
 	}
 
 	void cleanupTestCase()
