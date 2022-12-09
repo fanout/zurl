@@ -1,6 +1,10 @@
 SRC_DIR = $$PWD/..
 COMMON_DIR = $$SRC_DIR/common
 
+QMAKE_CXXFLAGS += $$(CXXFLAGS)
+QMAKE_CFLAGS += $$(CFLAGS)
+QMAKE_LFLAGS += $$(LDFLAGS)
+
 include($$SRC_DIR/jdns/jdns.pri)
 
 INCLUDEPATH += $$SRC_DIR/qzmq/src
