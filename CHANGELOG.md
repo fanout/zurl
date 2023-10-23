@@ -1,6 +1,10 @@
 Zurl Changelog
 ==============
 
+v. 1.12.0 (2023-10-23)
+
+  * Qt 6 compatibility.
+
 v. 1.11.1 (2022-01-26)
 
   * Fix crash due to incorrect use of curl.
