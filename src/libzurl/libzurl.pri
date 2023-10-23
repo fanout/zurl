@@ -5,8 +5,6 @@ QMAKE_CXXFLAGS += $$(CXXFLAGS)
 QMAKE_CFLAGS += $$(CFLAGS)
 QMAKE_LFLAGS += $$(LDFLAGS)
 
-include($$SRC_DIR/jdns/jdns.pri)
-
 INCLUDEPATH += $$SRC_DIR/qzmq/src
 include($$SRC_DIR/qzmq/src/src.pri)
 

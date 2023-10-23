@@ -4,6 +4,3 @@
 [submodule "src/common"]
 	path = src/common
 	url = https://github.com/fanout/common.git
-[submodule "src/jdns"]
-	path = src/jdns
-	url = https://github.com/psi-im/jdns.git
