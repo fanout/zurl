@@ -713,10 +713,10 @@ public:
 		return self->socketFunction(easy, s, action, socketp);
 	}
 
-	static void timerFunction_cb(CURLM *multi, long timeout_ms, void *userp)
+	static int timerFunction_cb(CURLM *multi, long timeout_ms, void *userp)
 	{
 		CurlConnectionManager *self = (CurlConnectionManager *)userp;
-		self->timerFunction(multi, timeout_ms);
+		return self->timerFunction(multi, timeout_ms);
 	}
 
 	int socketFunction(CURL *easy, curl_socket_t s, int action, void *socketp)
@@ -772,7 +772,7 @@ public:
 		return 0;
 	}
 
-	void timerFunction(CURLM *multi, long timeout_ms)
+	int timerFunction(CURLM *multi, long timeout_ms)
 	{
 		Q_UNUSED(multi);
 
@@ -786,6 +786,7 @@ public:
 			log_debug("timerFunction: cancel timer");
 			timer->stop();
 		}
+		return 0;
 	}
 
 	void doSocketAction(bool all, int sockfd, int ev_bitmask)
