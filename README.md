@@ -1,3 +1,5 @@
+NOTE: This project is deprecated. Similar functionality has been built into the `pushpin-connmgr` program of [Pushpin](https://github.com/fastly/pushpin).
+
 # Zurl
 
 Author: Justin Karneges <justin@fanout.io>
